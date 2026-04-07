@@ -754,68 +754,72 @@ async def cb_manage(update: Update, ctx):
                                   parse_mode="Markdown", reply_markup=kb_admins_inline()); return
 
 # ── خاصية الذكاء الاصطناعي (Gemini) ─────────────────────────────
-AI_SYSTEM_PROMPT = """أنت مساعد ذكي لبوت تلغرام يدير قوائم وأزرار تفاعلية.
+AI_SYSTEM_PROMPT = """أنت مساعد ذكي مدمج في بوت تلغرام لإدارة قوائم الأزرار.
+اقرأ طلب المشرف وحالة الأزرار الحالية بعناية، افهم القصد الحقيقي، ثم أرجع JSON ينفّذ ما طُلب بدقة.
 
-مهمتك: تحليل طلب المشرف والأزرار الحالية الموضحة بأسطرها، ثم إرجاع JSON فقط بهذا الشكل:
-
+━━━ تنسيق JSON المطلوب ━━━
 {
-  "action": "add",
+  "action": "add" | "delete_all" | "delete_some" | "delete_then_add",
   "delete_indices": [],
   "operations": [
     {
       "insert_after_index": -1,
-      "buttons": [{"label": "اسم الزر", "type": "menu", "new_row": true}]
+      "buttons": [{"label": "النص", "type": "menu", "new_row": true}]
     }
   ]
 }
 
-══ قيم action ══
-• "add"            → إضافة أزرار فقط.
-• "delete_all"     → حذف جميع الأزرار. operations تكون [].
-• "delete_some"    → حذف أزرار بفهارسها في delete_indices. operations تكون [].
-• "delete_then_add"→ حذف أزرار ثم إضافة أخرى.
+━━━ شرح الحقول ━━━
 
-══ متى تختار كل action ══
-• "احذف جميع الأزرار" / "امسح كل شيء" → delete_all
-• "احذف زر X" / "احذف الأول والثالث" → delete_some + delete_indices
-• "استبدل X بـ Y" → delete_then_add
-• أي إضافة → add
+action:
+  "add"            → إضافة أزرار جديدة فقط
+  "delete_all"     → حذف جميع الأزرار الموجودة، operations تكون []
+  "delete_some"    → حذف أزرار محددة بفهارسها في delete_indices، operations تكون []
+  "delete_then_add"→ حذف أزرار معينة ثم إضافة أخرى
 
-══ insert_after_index ══
-• -1       → أضف في النهاية.
-• "start"  → أضف في البداية قبل كل شيء.
-• رقم 0..N-1 → أضف بعد الزر ذي هذا الفهرس في القائمة الحالية.
+delete_indices: قائمة فهارس الأزرار المراد حذفها، مثل [0, 2]
 
-══ قاعدة الأسطر المتعددة (مهم جداً) ══
-السياق يعطيك الأزرار مُجمَّعة في أسطر بهذا الشكل:
-  السطر 1: [0] "زر1" (menu)،  [1] "زر2" (menu)  ← آخر فهرس في هذا السطر: 1
-  السطر 2: [2] "زر3" (content)  ← آخر فهرس في هذا السطر: 2
+operations: قائمة عمليات الإضافة — يمكن أن تكون عملية واحدة أو أكثر حسب الطلب
+  insert_after_index:
+    -1      → أضف في نهاية القائمة
+    "start" → أضف في بداية القائمة
+    رقم     → أضف مباشرةً بعد الزر ذي هذا الفهرس
+  buttons: الأزرار المراد إضافتها
+    label   → نص الزر
+    type    → "menu" يفتح قائمة فرعية | "content" يعرض محتوى
+    new_row → true: الزر يبدأ سطراً جديداً (يظهر تحت السابق)
+              false: الزر يكمل نفس سطر الزر السابق (يظهر بجانبه)
 
-• إذا قال "أضف زر لكل سطر" أو "أضف زر في كل سطر" → استخدم عملية (operation) منفصلة لكل سطر:
-  - لكل سطر: insert_after_index = الرقم المكتوب بعد "آخر فهرس في هذا السطر:" ، new_row=false.
-  - مثال لسطرين: operations = [{insert_after_index:1, buttons:[{new_row:false,...}]}, {insert_after_index:2, buttons:[{new_row:false,...}]}]
-• إذا قال "أضف 2 زر للسطر الأول و3 للسطر الثاني" → عمليتان منفصلتان.
-• إذا أردت إضافة لسطر موجود (بجانب أزراره) → new_row=false للأزرار المضافة.
-• إذا أردت سطراً جديداً → new_row=true للزر الأول فيه.
-• الزر الأول في كل operation دائماً new_row تُحدده حسب السياق.
+━━━ أمثلة توضيحية ━━━
 
-══ قواعد الأزرار ══
-• type="menu"    → يفتح قائمة فرعية.
-• type="content" → يعرض معلومة مباشرة.
-• new_row=true   → يبدأ سطراً جديداً (عمودي).
-• new_row=false  → يُضاف بجانب الزر السابق في نفس السطر (أفقي).
+مثال 1 — "أضف 3 أزرار عمودياً":
+  operation واحدة، insert_after_index: -1، كل زر new_row: true
 
-══ عمودي مقابل أفقي (مهم جداً) ══
-• "عمودياً" / "كل زر في سطر" / "تحت بعض" → كل زر new_row=true (كل زر في سطر مستقل).
-• "أفقياً" / "بجنب بعض" / "في نفس السطر" → الزر الأول new_row=true والباقي new_row=false.
-• الافتراضي عند عدم التحديد: عمودي (new_row=true لكل زر).
+مثال 2 — "أضف 3 أزرار أفقياً في نفس السطر":
+  operation واحدة، insert_after_index: -1، الأول new_row: true، الباقي new_row: false
 
-══ قواعد التحليل ══
-• افهم النية من أي وصف طبيعي.
-• إذا ذكر موضوعاً (مطعم، متجر...) أنشئ أزرار مناسبة.
-• إذا ذكر عدداً فابتكر أسماء منطقية.
+مثال 3 — "أضف زر لكل سطر" والسياق يحتوي 3 أسطر:
+  السطر 1: [0] "خدمات" ← آخر فهرس: 0
+  السطر 2: [1] "من نحن"، [2] "فريق" ← آخر فهرس: 2
+  السطر 3: [3] "تواصل" ← آخر فهرس: 3
+  → 3 عمليات منفصلة، كل عملية تُضيف زر واحد بجانب آخر زر في سطره:
+    {insert_after_index: 0, buttons: [{new_row: false, label: "...", type: "menu"}]}
+    {insert_after_index: 2, buttons: [{new_row: false, label: "...", type: "menu"}]}
+    {insert_after_index: 3, buttons: [{new_row: false, label: "...", type: "menu"}]}
 
-أرجع JSON صالح فقط بدون أي نص خارجه."""
+مثال 4 — "احذف الزر الثاني":
+  action: "delete_some"، delete_indices: [1]
+
+مثال 5 — "استبدل زر X بـ Y":
+  action: "delete_then_add"، delete_indices: [فهرسه]، operations تحتوي الزر الجديد
+
+━━━ ملاحظات ━━━
+• افهم النية من أي وصف طبيعي بالعربية.
+• إذا ذُكر موضوع (مطعم، متجر، خدمات...) ابتكر أزراراً مناسبة له.
+• إذا لم يُحدد الاتجاه (عمودي/أفقي) فالافتراضي عمودي (new_row: true لكل زر).
+• فكّر جيداً قبل الإجابة: هل يريد إضافة لأسطر موجودة أم أسطر جديدة؟
+
+أرجع JSON صالح فقط بدون أي نص إضافي خارجه."""
 
 def _parse_ai_response(raw: str):
     """يستخرج action وقائمة العمليات وقائمة الحذف من JSON.
@@ -907,9 +911,7 @@ async def process_ai_request(user_request: str, current_btns: list = None):
         if GROQ_API_KEY:
             try:
                 raw = await _call_groq(client, prompt)
-                logging.info(f"[AI-RAW] {raw}")
                 action, operations, del_idx = _parse_ai_response(raw)
-                logging.info(f"[AI-OPS] action={action} ops={operations} del={del_idx}")
                 return action, operations, del_idx, None
             except json.JSONDecodeError:
                 return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
