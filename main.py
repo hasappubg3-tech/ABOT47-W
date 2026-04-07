@@ -907,7 +907,9 @@ async def process_ai_request(user_request: str, current_btns: list = None):
         if GROQ_API_KEY:
             try:
                 raw = await _call_groq(client, prompt)
+                logging.info(f"[AI-RAW] {raw}")
                 action, operations, del_idx = _parse_ai_response(raw)
+                logging.info(f"[AI-OPS] action={action} ops={operations} del={del_idx}")
                 return action, operations, del_idx, None
             except json.JSONDecodeError:
                 return None, [], [], "⚠️ لم أتمكن من تفسير رد الذكاء الاصطناعي. حاول مرة أخرى."
