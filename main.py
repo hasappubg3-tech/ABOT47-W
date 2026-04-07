@@ -441,6 +441,46 @@ async def on_message(update: Update, ctx):
         await m.reply_text("✅", reply_markup=build_kb(uid, pid))
         return
 
+    # ── إشارة النقطة للذكاء الاصطناعي (للمشرفين فقط) ────────────
+    if not state and text.startswith(".") and is_admin(uid):
+        request_text = text[1:].strip()
+        if not request_text:
+            await m.reply_text("💡 اكتب طلبك بعد النقطة. مثال:\n. أضف أزرار: خدماتنا، من نحن، تواصل معنا")
+            return
+        if not GEMINI_API_KEY:
+            await m.reply_text("❌ مفتاح Gemini API غير مُعَيَّن.")
+            return
+        wait_msg = await m.reply_text("⏳ جاري التواصل مع الذكاء الاصطناعي...")
+        buttons, error = await gemini_generate_buttons(request_text)
+        if error:
+            await wait_msg.edit_text(error)
+            return
+        added = []
+        last_id = None
+        for btn in buttons:
+            label = btn.get("label", "").strip()
+            btype = btn.get("type", "menu")
+            new_row = btn.get("new_row", True)
+            if not label:
+                continue
+            if btype not in ("menu", "content"):
+                btype = "menu"
+            if last_id is None:
+                last_id = add_btn(pid, btype, label)
+            else:
+                last_id = add_btn_after(last_id, pid, btype, label, new_row=0 if not new_row else 1)
+            added.append(f"{'📂' if btype == 'menu' else '📄'} {label}")
+        if not added:
+            await wait_msg.edit_text("⚠️ لم تُضَف أي أزرار.")
+            return
+        summary = "\n".join(f"  • {a}" for a in added)
+        await wait_msg.edit_text(
+            f"✅ *تمت إضافة {len(added)} زر بواسطة الذكاء الاصطناعي:*\n\n{summary}",
+            parse_mode="Markdown"
+        )
+        await m.reply_text("🔄", reply_markup=build_kb(uid, pid))
+        return
+
     # ── اختيار نوع الزر ───────────────────────────────────────────
     if state == "wait_type" and text in TYPE_MAP:
         t = TYPE_MAP[text]; ctx.user_data["new_type"] = t; ctx.user_data["state"] = "wait_label"
@@ -717,67 +757,6 @@ async def gemini_generate_buttons(user_request: str):
         logging.error(f"Gemini error: {e}")
         return None, f"❌ خطأ في الاتصال بـ Gemini: {str(e)[:100]}"
 
-async def cmd_ai(update: Update, ctx):
-    """أمر /ai للمشرفين فقط: يستقبل وصفاً ويضيف أزرار تلقائياً."""
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        await update.message.reply_text("❌ هذا الأمر للمشرفين فقط.")
-        return
-    if not GEMINI_API_KEY:
-        await update.message.reply_text("❌ مفتاح Gemini API غير مُعَيَّن. أضف GEMINI_API_KEY في المتغيرات البيئية.")
-        return
-    args = ctx.args
-    if not args:
-        await update.message.reply_text(
-            "🤖 *استخدام خاصية الذكاء الاصطناعي*\n\n"
-            "اكتب وصفاً للأزرار التي تريد إضافتها:\n"
-            "`/ai أضف أزرار: خدماتنا، من نحن، تواصل معنا`\n\n"
-            "أو:\n"
-            "`/ai أضف قائمة رئيسية فيها: الأخبار، الرياضة، التقنية، الترفيه`",
-            parse_mode="Markdown"
-        )
-        return
-
-    request_text = " ".join(args)
-    pid = ctx.user_data.get("pid")
-
-    wait_msg = await update.message.reply_text("⏳ جاري التواصل مع الذكاء الاصطناعي...")
-
-    buttons, error = await gemini_generate_buttons(request_text)
-
-    if error:
-        await wait_msg.edit_text(error)
-        return
-
-    # إضافة الأزرار إلى قاعدة البيانات
-    added = []
-    last_id = None
-    for btn in buttons:
-        label = btn.get("label", "").strip()
-        btype = btn.get("type", "menu")
-        new_row = btn.get("new_row", True)
-        if not label:
-            continue
-        if btype not in ("menu", "content"):
-            btype = "menu"
-        if last_id is None:
-            # الزر الأول: أضفه في النهاية
-            last_id = add_btn(pid, btype, label)
-        else:
-            last_id = add_btn_after(last_id, pid, btype, label, new_row=0 if not new_row else 1)
-        added.append(f"{'📂' if btype == 'menu' else '📄'} {label}")
-
-    if not added:
-        await wait_msg.edit_text("⚠️ لم تُضَف أي أزرار.")
-        return
-
-    summary = "\n".join(f"  • {a}" for a in added)
-    await wait_msg.edit_text(
-        f"✅ *تمت إضافة {len(added)} زر بواسطة الذكاء الاصطناعي:*\n\n{summary}",
-        parse_mode="Markdown"
-    )
-    await update.message.reply_text("🔄", reply_markup=build_kb(uid, pid))
-
 # ── إعداد البوت ──────────────────────────────────────────────────
 async def post_init(app):
     sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
@@ -795,7 +774,6 @@ def main():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("myid", cmd_myid))
-    app.add_handler(CommandHandler("ai", cmd_ai))
     app.add_handler(CallbackQueryHandler(cb_manage))
     app.add_handler(MessageHandler(media_filter, on_message))
 
