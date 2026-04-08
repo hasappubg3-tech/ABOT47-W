@@ -436,14 +436,6 @@ def kb_cancel_inline():
 
 # ── مساعد اللوحة الثابتة ─────────────────────────────────────────
 async def set_panel(ctx, chat_id, text, markup=None):
-    pid = ctx.user_data.get("panel_id")
-    if pid:
-        try:
-            await ctx.bot.edit_message_text(chat_id=chat_id, message_id=pid,
-                                            text=text, reply_markup=markup, parse_mode="Markdown")
-            return
-        except Exception:
-            pass
     msg = await ctx.bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
     ctx.user_data["panel_id"] = msg.message_id
 
