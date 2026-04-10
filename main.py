@@ -464,8 +464,15 @@ def kb_admins_inline():
 def kb_settings():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 المشرفون",      callback_data="st_admins")],
-        [InlineKeyboardButton("💾 نسخة احتياطية", callback_data="st_backup")],
+        [InlineKeyboardButton("💾 النسخ الاحتياطي", callback_data="st_backup_menu")],
         [InlineKeyboardButton("📊 الإحصائيات",   callback_data="st_stats")],
+    ])
+
+def kb_backup_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📥 تحميل نسخة احتياطية", callback_data="st_backup_dl")],
+        [InlineKeyboardButton("📤 رفع نسخة احتياطية",   callback_data="st_restore")],
+        [InlineKeyboardButton("🔙 رجوع",                 callback_data="st_back")],
     ])
 
 def get_stats() -> str:
@@ -602,6 +609,26 @@ async def on_message(update: Update, ctx):
             except Exception:
                 pass
         await m.reply_text("✅ تم تحديث الوصف.", reply_markup=build_kb(uid, pid))
+        return
+
+    # ── انتظار ملف الاستعادة ─────────────────────────────────────
+    if state == "wait_restore_zip":
+        if not m.document:
+            await m.reply_text("⚠️ أرسل ملف ZIP فقط.")
+            return
+        ctx.user_data.pop("state", None)
+        wait_msg = await m.reply_text("⏳ جاري تحميل الملف وتطبيق الاستعادة...")
+        zip_tmp = f"/tmp/restore_{m.document.file_unique_id}.zip"
+        try:
+            tg_file = await ctx.bot.get_file(m.document.file_id)
+            await tg_file.download_to_drive(zip_tmp)
+            ok, msg = await restore_backup(zip_tmp)
+            await wait_msg.edit_text(msg)
+        except Exception as e:
+            await wait_msg.edit_text(f"❌ فشل التحميل أو الاستعادة: {e}")
+        finally:
+            if os.path.exists(zip_tmp):
+                os.remove(zip_tmp)
         return
 
     # ── انتظار اسم جديد للتعديل ───────────────────────────────────
@@ -907,9 +934,30 @@ async def cb_manage(update: Update, ctx):
         )
         return
 
-    if d == "st_backup":
-        await q.edit_message_text("⏳ جاري إنشاء النسخة الاحتياطية...")
+    if d == "st_backup_menu":
+        await q.edit_message_text("💾 *النسخ الاحتياطي*\n\nاختر العملية:", parse_mode="Markdown",
+                                  reply_markup=kb_backup_menu())
+        return
+
+    if d == "st_backup_dl":
+        await q.edit_message_text("⏳ جاري إنشاء النسخة الاحتياطية، يرجى الانتظار...")
         await send_backup(ctx.bot, q.from_user.id)
+        try:
+            await q.edit_message_text("💾 *النسخ الاحتياطي*\n\nاختر العملية:", parse_mode="Markdown",
+                                      reply_markup=kb_backup_menu())
+        except Exception:
+            pass
+        return
+
+    if d == "st_restore":
+        ctx.user_data["state"] = "wait_restore_zip"
+        await q.edit_message_text(
+            "📤 *رفع نسخة احتياطية*\n\nأرسل ملف ZIP الخاص بالنسخة الاحتياطية الآن.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="cancel")
+            ]])
+        )
         return
 
     if d == "st_stats":
@@ -1468,6 +1516,7 @@ async def process_ai_request(user_request: str, current_btns: list = None):
 # ── النسخ الاحتياطي ───────────────────────────────────────────────
 async def send_backup(bot, chat_id: int):
     """يُنشئ ملف ZIP يحتوي قاعدة البيانات والملفات ويرسله للمستخدم."""
+    from telegram.request import HTTPXRequest
     now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     zip_path = f"/tmp/backup_{now}.zip"
     try:
@@ -1484,7 +1533,10 @@ async def send_backup(bot, chat_id: int):
                 chat_id=chat_id,
                 document=f,
                 filename=f"backup_{now}.zip",
-                caption=f"💾 نسخة احتياطية — {now}"
+                caption=f"💾 نسخة احتياطية — {now}",
+                write_timeout=300,
+                read_timeout=300,
+                connect_timeout=60,
             )
     except Exception as e:
         logging.warning(f"فشل إرسال النسخة الاحتياطية: {e}")
@@ -1495,6 +1547,29 @@ async def send_backup(bot, chat_id: int):
     finally:
         if os.path.exists(zip_path):
             os.remove(zip_path)
+
+async def restore_backup(zip_path: str) -> tuple[bool, str]:
+    """يستعيد النسخة الاحتياطية من ملف ZIP — يُعيد (نجاح, رسالة)."""
+    import shutil
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = zf.namelist()
+            if "data.db" not in names:
+                return False, "⚠️ الملف لا يحتوي على data.db — تأكد أنه نسخة احتياطية صحيحة."
+            db_bak = DB + ".bak"
+            if os.path.exists(DB):
+                shutil.copy2(DB, db_bak)
+            zf.extract("data.db", path=".")
+            media_files = [n for n in names if n.startswith("media/") and not n.endswith("/")]
+            for mf in media_files:
+                zf.extract(mf, path=".")
+        if os.path.exists(db_bak):
+            os.remove(db_bak)
+        return True, f"✅ تمت الاستعادة بنجاح!\n🗂 قاعدة البيانات: محدّثة\n📁 ملفات الميديا المستعادة: {len(media_files)}"
+    except zipfile.BadZipFile:
+        return False, "❌ الملف المرسل ليس ملف ZIP صالح."
+    except Exception as e:
+        return False, f"❌ فشلت الاستعادة: {e}"
 
 async def _auto_backup_job(ctx):
     """مهمة الجدولة التلقائية — ترسل النسخة لـ SUPER_ADMIN_ID."""
