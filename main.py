@@ -706,8 +706,8 @@ def kb_settings():
         [InlineKeyboardButton("💾 النسخ الاحتياطي",              callback_data="st_backup_menu")],
         [InlineKeyboardButton(cap_label,                         callback_data="st_caption")],
         [InlineKeyboardButton(capbtn_label,                      callback_data="st_capbtn")],
-        [InlineKeyboardButton(f"🔔 التنبيه المنبثق {notif1_icon}", callback_data="st_notif1")],
-        [InlineKeyboardButton(f"📢 رسالة الاشتراك {notif2_icon}",  callback_data="st_notif2")],
+        [InlineKeyboardButton(f"📢 رسالة الاشتراك {notif1_icon}", callback_data="st_notif1")],
+        [InlineKeyboardButton(f"🔔 التنبيه المنبثق {notif2_icon}", callback_data="st_notif2")],
         [InlineKeyboardButton("📊 الإحصائيات",                   callback_data="st_stats")],
     ])
 
@@ -718,7 +718,7 @@ def kb_notif1_settings():
     every_op     = get_setting("notif_every_opens", "5")
     ok_text      = get_setting("notif_ok_text",    "✅ نعم، اشتركت")
     cancel_text  = get_setting("notif_cancel_text", "❌ لا، لاحقاً")
-    toggle_label = "🔕 إيقاف التنبيه المنبثق" if notif_on else "🔔 تفعيل التنبيه المنبثق"
+    toggle_label = "🔕 إيقاف رسالة الاشتراك" if notif_on else "📢 تفعيل رسالة الاشتراك"
     rows = []
     rows.append([InlineKeyboardButton(toggle_label, callback_data="st_notif_toggle")])
     rows.append([InlineKeyboardButton(
@@ -744,7 +744,7 @@ def kb_notif2_settings():
     notif2_on    = get_setting("notif2_enabled", "0") == "1"
     msg          = get_setting("notif2_message", "")
     chan         = get_setting("notif_channel", "")
-    toggle_label = "🔕 إيقاف رسالة الاشتراك" if notif2_on else "📢 تفعيل رسالة الاشتراك"
+    toggle_label = "🔕 إيقاف التنبيه المنبثق" if notif2_on else "🔔 تفعيل التنبيه المنبثق"
     rows = []
     rows.append([InlineKeyboardButton(toggle_label, callback_data="st_notif2_toggle")])
     rows.append([InlineKeyboardButton(
@@ -1035,24 +1035,24 @@ async def on_message(update: Update, ctx):
                            reply_markup=build_kb(uid, pid))
         return
 
-    # ── انتظار نص التنبيه المنبثق (النظام 1) ─────────────────────
+    # ── انتظار نص رسالة الاشتراك (النظام 1) ─────────────────────
     if state == "wait_notif_msg":
         if not m.text or m.text in SPECIAL_BTNS:
             await m.reply_text("⚠️ أرسل نصاً صحيحاً للرسالة."); return
         set_setting("notif_message", m.text)
         ctx.user_data.pop("state", None)
-        await set_panel(ctx, chat_id, "🔔 *التنبيه المنبثق*", kb_notif1_settings())
-        await m.reply_text("✅ تم حفظ نص التنبيه.", reply_markup=build_kb(uid, pid))
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
+        await m.reply_text("✅ تم حفظ نص رسالة الاشتراك.", reply_markup=build_kb(uid, pid))
         return
 
-    # ── انتظار نص رسالة الاشتراك (النظام 2) ────────────────────
+    # ── انتظار نص التنبيه المنبثق (النظام 2) ────────────────────
     if state == "wait_notif2_msg":
         if not m.text or m.text in SPECIAL_BTNS:
             await m.reply_text("⚠️ أرسل نصاً صحيحاً للرسالة."); return
         set_setting("notif2_message", m.text)
         ctx.user_data.pop("state", None)
-        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif2_settings())
-        await m.reply_text("✅ تم حفظ نص رسالة الاشتراك.", reply_markup=build_kb(uid, pid))
+        await set_panel(ctx, chat_id, "🔔 *التنبيه المنبثق*", kb_notif2_settings())
+        await m.reply_text("✅ تم حفظ نص التنبيه المنبثق.", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار رابط قناة التنبيه ─────────────────────────────────
@@ -1062,12 +1062,12 @@ async def on_message(update: Update, ctx):
         chan = m.text.strip()
         set_setting("notif_channel", chan)
         ctx.user_data.pop("state", None)
-        await set_panel(ctx, chat_id, "🔔 *التنبيه المنبثق*", kb_notif1_settings())
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
         await m.reply_text(f"✅ تم حفظ القناة: `{chan}`", parse_mode="Markdown",
                            reply_markup=build_kb(uid, pid))
         return
 
-    # ── انتظار عدد الضغطات قبل التنبيه (النظام 1) ────────────────
+    # ── انتظار عدد الضغطات قبل رسالة الاشتراك (النظام 1) ────────────────
     if state == "wait_notif_opens":
         try:
             val = int(m.text.strip())
@@ -1076,7 +1076,7 @@ async def on_message(update: Update, ctx):
             await m.reply_text("⚠️ أرسل رقماً صحيحاً (0 أو أكثر)."); return
         set_setting("notif_every_opens", str(val))
         ctx.user_data.pop("state", None)
-        await set_panel(ctx, chat_id, "🔔 *التنبيه المنبثق*", kb_notif1_settings())
+        await set_panel(ctx, chat_id, "📢 *رسالة الاشتراك*", kb_notif1_settings())
         lbl = f"كل {val} ضغطة" if val > 0 else "مُعطَّل"
         await m.reply_text(f"✅ تم الضبط: {lbl}", reply_markup=build_kb(uid, pid))
         return
@@ -1558,17 +1558,17 @@ async def cb_manage(update: Update, ctx):
         )
         return
 
-    # ── إعدادات النظام 1: التنبيه المنبثق ────────────────────────
+    # ── إعدادات النظام 1: رسالة الاشتراك ────────────────────────
     if d == "st_notif1":
         msg      = get_setting("notif_message", "")
         chan     = get_setting("notif_channel", "")
         on       = get_setting("notif_enabled", "1") == "1"
         every_op = get_setting("notif_every_opens", "5")
-        status_txt  = "✅ مفعّل" if on else "⭕ موقوف"
+        status_txt  = "✅ مفعّلة" if on else "⭕ موقوفة"
         msg_preview = f"\n\n📝 *النص:*\n{msg}" if msg else "\n\n📝 لا يوجد نص بعد."
         chan_txt     = f"\n📢 القناة: `{chan}`" if chan else ""
         await q.edit_message_text(
-            f"🔔 *التنبيه المنبثق* — {status_txt}\n"
+            f"📢 *رسالة الاشتراك* — {status_txt}\n"
             f"📂 يظهر كل {every_op} ضغطة على محتوى"
             f"{chan_txt}{msg_preview}",
             parse_mode="Markdown",
@@ -1579,14 +1579,14 @@ async def cb_manage(update: Update, ctx):
     if d == "st_notif_toggle":
         cur = get_setting("notif_enabled", "1")
         set_setting("notif_enabled", "0" if cur == "1" else "1")
-        await q.edit_message_text("🔔 *التنبيه المنبثق*", parse_mode="Markdown",
+        await q.edit_message_text("📢 *رسالة الاشتراك*", parse_mode="Markdown",
                                   reply_markup=kb_notif1_settings())
         return
 
     if d == "st_notif_msg":
         ctx.user_data["state"] = "wait_notif_msg"
         await q.edit_message_text(
-            "✏️ أرسل نص التنبيه المنبثق الذي يطلب الاشتراك:\n\n"
+            "✏️ أرسل نص رسالة الاشتراك التي تظهر كل N ضغطة:\n\n"
             "_يمكنك استخدام إيموجي وتنسيق ماركداون_",
             parse_mode="Markdown",
             reply_markup=kb_cancel_inline()
@@ -1617,8 +1617,8 @@ async def cb_manage(update: Update, ctx):
         ctx.user_data["state"] = "wait_notif_opens"
         every_op = get_setting("notif_every_opens", "5")
         await q.edit_message_text(
-            f"📂 *عدد الضغطات قبل التنبيه*\n\nالقيمة الحالية: *{every_op}* ضغطة\n\n"
-            "أرسل رقماً لتحديد كم ضغطة على محتوى قبل ظهور التنبيه المنبثق.\n"
+            f"📂 *عدد الضغطات قبل رسالة الاشتراك*\n\nالقيمة الحالية: *{every_op}* ضغطة\n\n"
+            "أرسل رقماً لتحديد كم ضغطة على محتوى قبل ظهور رسالة الاشتراك.\n"
             "_أرسل 0 لتعطيل هذا الشرط_",
             parse_mode="Markdown",
             reply_markup=kb_cancel_inline()
@@ -1637,17 +1637,17 @@ async def cb_manage(update: Update, ctx):
         )
         return
 
-    # ── إعدادات النظام 2: رسالة الاشتراك العادية ─────────────────
+    # ── إعدادات النظام 2: التنبيه المنبثق ────────────────────────
     if d == "st_notif2":
         msg   = get_setting("notif2_message", "")
         chan  = get_setting("notif_channel", "")
         on    = get_setting("notif2_enabled", "0") == "1"
-        status_txt  = "✅ مفعّلة" if on else "⭕ موقوفة"
+        status_txt  = "✅ مفعّل" if on else "⭕ موقوف"
         msg_preview = f"\n\n📝 *النص:*\n{msg}" if msg else "\n\n📝 لا يوجد نص بعد."
         chan_txt     = f"\n📢 القناة: `{chan}`" if chan else ""
         await q.edit_message_text(
-            f"📢 *رسالة الاشتراك* — {status_txt}\n"
-            f"تظهر مع كل ضغطة على محتوى للغير مشتركين"
+            f"🔔 *التنبيه المنبثق* — {status_txt}\n"
+            f"يظهر مع كل ضغطة على محتوى للغير مشتركين"
             f"{chan_txt}{msg_preview}",
             parse_mode="Markdown",
             reply_markup=kb_notif2_settings()
@@ -1657,14 +1657,14 @@ async def cb_manage(update: Update, ctx):
     if d == "st_notif2_toggle":
         cur = get_setting("notif2_enabled", "0")
         set_setting("notif2_enabled", "0" if cur == "1" else "1")
-        await q.edit_message_text("📢 *رسالة الاشتراك*", parse_mode="Markdown",
+        await q.edit_message_text("🔔 *التنبيه المنبثق*", parse_mode="Markdown",
                                   reply_markup=kb_notif2_settings())
         return
 
     if d == "st_notif2_msg":
         ctx.user_data["state"] = "wait_notif2_msg"
         await q.edit_message_text(
-            "✏️ أرسل نص رسالة الاشتراك التي ستظهر مع كل محتوى للغير مشتركين:\n\n"
+            "✏️ أرسل نص التنبيه المنبثق الذي سيظهر مع كل ضغطة للغير مشتركين:\n\n"
             "_يمكنك استخدام إيموجي وتنسيق ماركداون_",
             parse_mode="Markdown",
             reply_markup=kb_cancel_inline()
