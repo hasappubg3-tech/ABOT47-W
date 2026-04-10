@@ -1398,7 +1398,7 @@ async def cb_manage(update: Update, ctx):
                     chat_id=q.message.chat_id,
                     text="✅ *شكراً لك!*\n\nيمكنك الآن الاستمرار في التصفح.",
                     parse_mode="Markdown",
-                    api_kwargs={"message_effect_id": "5046589279464577574"}
+                    api_kwargs={"message_effect_id": "5107584321108051014"}
                 )
             except Exception:
                 try:
@@ -1421,7 +1421,7 @@ async def cb_manage(update: Update, ctx):
                     chat_id=q.message.chat_id,
                     text="👌 *حسناً!*\n\nيمكنك الاستمرار في التصفح.",
                     parse_mode="Markdown",
-                    api_kwargs={"message_effect_id": "5104858069142078462"}
+                    api_kwargs={"message_effect_id": "5044134455711629726"}
                 )
             except Exception:
                 try:
