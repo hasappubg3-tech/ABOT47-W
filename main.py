@@ -218,7 +218,7 @@ def build_caption_btn_markup(buttons):
 
 # ── نظام التنبيهات ────────────────────────────────────────────────
 def _today_str():
-    return datetime.utcnow().strftime("%Y-%m-%d")
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
 def _ensure_user_stats(uid):
     import time as _time
