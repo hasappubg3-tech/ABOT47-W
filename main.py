@@ -603,6 +603,8 @@ def build_kb(uid, pid=None):
         rows.append(current_row)
     if admin and not btns:
         rows.append([KeyboardButton(BTN_PLUS)])
+    if admin:
+        rows.append([KeyboardButton(BTN_ADD)])
     if pid is not None:
         rows.append([KeyboardButton(BTN_BACK)])
     if admin:
@@ -988,12 +990,8 @@ async def cmd_start(update: Update, ctx):
     kb = build_kb(uid)
     if not kb:
         await update.message.reply_text("👋 أهلاً! لا توجد أزرار متاحة حالياً.")
-        if is_admin(uid):
-            await set_panel(ctx, update.message.chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
         return
     await update.message.reply_text("👋 أهلاً!", reply_markup=kb)
-    if is_admin(uid):
-        await set_panel(ctx, update.message.chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
     if not is_admin(uid):
         inc_user_sessions(uid)
 
@@ -1032,8 +1030,6 @@ async def on_message(update: Update, ctx):
             await set_panel(ctx, chat_id,
                             f"📄 *{text}*\n\nلا يوجد محتوى بعد. اضغط ➕ لإضافة محتوى.",
                             kb_content_panel(bid))
-        else:
-            await set_panel(ctx, chat_id, f"📂 *{text}*", kb_manage(bid))
         return
 
     # ── انتظار محتوى جديد لزر موجود ──────────────────────────────
@@ -1213,10 +1209,7 @@ async def on_message(update: Update, ctx):
         b = get_btn(bid); ctx.user_data.pop("state", None)
         if b and b["type"] == "content":
             await set_panel(ctx, chat_id, f"📄 *{text}*", kb_content_panel(bid))
-        else:
-            ep = b["parent_id"] if b else None
-            await set_panel(ctx, chat_id, f"✅ تم تغيير الاسم إلى *{text}*", kb_manage(ep))
-        await m.reply_text("✅", reply_markup=build_kb(uid, pid))
+        await m.reply_text("✅ تم تغيير الاسم.", reply_markup=build_kb(uid, pid))
         return
 
     # ── انتظار رقم المشرف ─────────────────────────────────────────
@@ -1397,14 +1390,9 @@ async def on_message(update: Update, ctx):
             b = get_btn(pid); new_pid = b["parent_id"] if b else None
             ctx.user_data["pid"] = new_pid
             await m.reply_text(".", reply_markup=build_kb(uid, new_pid))
-            if is_admin(uid):
-                label = "⚙️ *إدارة الأزرار*:" if new_pid is None else f"📂 *{get_btn(new_pid)['label'] if get_btn(new_pid) else ''}*"
-                await set_panel(ctx, chat_id, label, kb_manage(new_pid))
         else:
             ctx.user_data["pid"] = None
             await m.reply_text(".", reply_markup=build_kb(uid, None))
-            if is_admin(uid):
-                await set_panel(ctx, chat_id, "⚙️ *إدارة الأزرار*:", kb_manage(None))
         return
 
     # ── نسخة احتياطية يدوية ───────────────────────────────────────
@@ -1433,16 +1421,22 @@ async def on_message(update: Update, ctx):
 
     # ── أزرار المشرف ──────────────────────────────────────────────
     if is_admin(uid):
+        if text == BTN_ADD:
+            ctx.user_data["add_pid"] = pid
+            ctx.user_data.pop("add_after", None)
+            ctx.user_data.pop("add_new_row", None)
+            await set_panel(ctx, chat_id, "اختر نوع الزر الجديد:", kb_add_type())
+            return
         if text.startswith(BTN_PLUS):
             after_bid = _parse_plus(text)
             if after_bid is not None:
                 b = get_btn(after_bid)
                 ctx.user_data["add_pid"] = b["parent_id"] if b else pid
-                ctx.user_data["add_after"] = after_bid
+                await set_panel(ctx, chat_id, "أين تريد إضافة الزر الجديد؟", kb_add_position(after_bid))
             else:
                 ctx.user_data["add_pid"] = pid
                 ctx.user_data.pop("add_after", None)
-            await set_panel(ctx, chat_id, "اختر نوع الزر الجديد:", kb_add_type())
+                await set_panel(ctx, chat_id, "اختر نوع الزر الجديد:", kb_add_type())
             return
         if text == BTN_SWAP:
             btns = get_buttons(pid)
@@ -1961,9 +1955,12 @@ async def cb_manage(update: Update, ctx):
     if d == "pt_cancel":
         ctx.user_data.pop("state", None); ctx.user_data.pop("new_type", None)
         ctx.user_data.pop("add_after", None); ctx.user_data.pop("add_pid", None)
-        cur_pid = ctx.user_data.get("pid")
-        await q.edit_message_text("⚙️ *إدارة الأزرار*:", parse_mode="Markdown",
-                                  reply_markup=kb_manage(cur_pid)); return
+        ctx.user_data.pop("add_new_row", None)
+        try:
+            await q.message.delete()
+        except Exception:
+            await q.edit_message_text("تم الإلغاء.")
+        return
 
     # ── تعديل اسم الزر ───────────────────────────────────────────
     if d.startswith("el_"):
