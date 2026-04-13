@@ -150,6 +150,13 @@ def init_db():
                 PRIMARY KEY (admin_id, message_id)
             );
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS user_reply_sessions (
+                user_id    INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                PRIMARY KEY (user_id, message_id)
+            );
+        """)
         c.commit()
         try:
             c.execute("ALTER TABLE buttons ADD COLUMN special_action TEXT DEFAULT NULL")
@@ -439,6 +446,20 @@ def del_file_reply_session(admin_id, message_id):
     c = db()
     c.execute("DELETE FROM file_reply_sessions WHERE admin_id=? AND message_id=?", (admin_id, message_id))
     c.commit(); c.close()
+
+def save_user_reply_session(user_id, message_id):
+    c = db()
+    c.execute(
+        "INSERT OR REPLACE INTO user_reply_sessions(user_id,message_id) VALUES(?,?)",
+        (user_id, message_id)
+    )
+    c.commit(); c.close()
+
+def is_user_reply_msg(user_id, message_id):
+    return db().execute(
+        "SELECT 1 FROM user_reply_sessions WHERE user_id=? AND message_id=?",
+        (user_id, message_id)
+    ).fetchone() is not None
 
 def swap_btns(bid1, bid2):
     """يبدّل موضع زرين (ord + new_row)."""

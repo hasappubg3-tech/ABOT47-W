@@ -28,76 +28,111 @@ async def on_message(update: Update, ctx):
         update_admin_username(uid, update.effective_user.username)
 
     if state == "wait_file_request":
-        bid = ctx.user_data.pop("file_request_bid", None)
-        ctx.user_data.pop("state", None)
-        admins = get_file_request_admins()
-        if not admins:
-            admins = [{"user_id": a["id"], "username": a.get("username")} for a in all_admins()]
-        user = update.effective_user
-        username = f"@{user.username}" if user.username else "لا يوجد"
-        full_name = user.full_name or "مستخدم"
-        def _escape_md(text: str) -> str:
-            for ch in ("\\", "*", "_", "`", "["):
-                text = text.replace(ch, f"\\{ch}")
-            return text
-        header = (
-            "📩 *طلب إضافة ملف جديد*\n\n"
-            f"👤 الاسم: *{_escape_md(full_name)}*\n"
-            f"🆔 الآيدي: `{uid}`\n"
-            f"🔗 اليوزر: {_escape_md(username)}\n\n"
-            "محتوى الطلب في الرسالة التالية:"
-        )
-        reply_btn = InlineKeyboardMarkup([[
-            InlineKeyboardButton("↩️ رد على المستخدم", callback_data=f"freply_{uid}")
-        ]])
-        sent_count = 0
-        for admin in admins:
-            admin_id = admin["user_id"]
-            try:
-                await ctx.bot.send_message(admin_id, header, parse_mode="Markdown")
-                copied = await ctx.bot.copy_message(
-                    chat_id=admin_id,
-                    from_chat_id=chat_id,
-                    message_id=m.message_id,
-                    reply_markup=reply_btn
-                )
-                save_file_reply_session(admin_id, copied.message_id, uid)
-                sent_count += 1
-            except Exception as e:
-                logging.warning(f"file request forward failed to {admin_id}: {e}")
-        if sent_count:
-            await m.reply_text("✅ تم تحويل طلبك للمشرفين وسوف يتم الرد بأسرع وقت.")
+        if is_bot_button_text(text, pid):
+            ctx.user_data.pop("file_request_bid", None)
+            ctx.user_data.pop("state", None)
+            state = None
         else:
-            await m.reply_text("⚠️ تعذر تحويل طلبك حالياً. حاول مرة أخرى لاحقاً.")
-        return
+            bid = ctx.user_data.pop("file_request_bid", None)
+            ctx.user_data.pop("state", None)
+            admins = get_file_request_admins()
+            if not admins:
+                admins = [{"user_id": a["id"], "username": a.get("username")} for a in all_admins()]
+            user = update.effective_user
+            username = f"@{user.username}" if user.username else "لا يوجد"
+            full_name = user.full_name or "مستخدم"
+            def _escape_md(t: str) -> str:
+                for ch in ("\\", "*", "_", "`", "["):
+                    t = t.replace(ch, f"\\{ch}")
+                return t
+            header = (
+                "📩 *طلب إضافة ملف جديد*\n\n"
+                f"👤 الاسم: *{_escape_md(full_name)}*\n"
+                f"🆔 الآيدي: `{uid}`\n"
+                f"🔗 اليوزر: {_escape_md(username)}\n\n"
+                "محتوى الطلب في الرسالة التالية:"
+            )
+            reply_btn = InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ رد على المستخدم", callback_data=f"freply_{uid}")
+            ]])
+            sent_count = 0
+            for admin in admins:
+                admin_id = admin["user_id"]
+                try:
+                    await ctx.bot.send_message(admin_id, header, parse_mode="Markdown")
+                    copied = await ctx.bot.copy_message(
+                        chat_id=admin_id,
+                        from_chat_id=chat_id,
+                        message_id=m.message_id,
+                        reply_markup=reply_btn
+                    )
+                    save_file_reply_session(admin_id, copied.message_id, uid)
+                    sent_count += 1
+                except Exception as e:
+                    logging.warning(f"file request forward failed to {admin_id}: {e}")
+            if sent_count:
+                await m.reply_text("✅ تم تحويل طلبك للمشرفين وسوف يتم الرد بأسرع وقت.")
+            else:
+                await m.reply_text("⚠️ تعذر تحويل طلبك حالياً. حاول مرة أخرى لاحقاً.")
+            return
+
+    # ── رد المستخدم على رسالة المشرف (reply مباشر) ───────────────────
+    if m.reply_to_message and not is_file_supervisor(uid):
+        replied_mid = m.reply_to_message.message_id
+        if is_user_reply_msg(uid, replied_mid):
+            admins = get_file_request_admins()
+            if not admins:
+                admins = [{"user_id": a["id"], "username": a.get("username")} for a in all_admins()]
+            sent_count = 0
+            for admin in admins:
+                try:
+                    await ctx.bot.copy_message(
+                        chat_id=admin["user_id"],
+                        from_chat_id=chat_id,
+                        message_id=m.message_id
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    logging.warning(f"user reply to admin failed: {e}")
+            if sent_count:
+                await m.reply_text("✅ تم إرسال ردك للمشرفين.")
+            else:
+                await m.reply_text("⚠️ تعذر إرسال ردك.")
+            return
 
     # ── رد المشرف على المستخدم (عبر زر الرد) ─────────────────────────
     if state and state.startswith("wait_freply_"):
-        target_uid = int(state.split("_", 2)[2])
-        ctx.user_data.pop("state", None)
-        try:
-            await ctx.bot.copy_message(
-                chat_id=target_uid,
-                from_chat_id=chat_id,
-                message_id=m.message_id
-            )
-            await m.reply_text("✅ تم إرسال ردك للمستخدم.")
-        except Exception as e:
-            logging.warning(f"file reply to user failed: {e}")
-            await m.reply_text("⚠️ تعذر إرسال الرد للمستخدم.")
-        return
+        if is_bot_button_text(text, pid):
+            ctx.user_data.pop("state", None)
+            state = None
+        else:
+            target_uid = int(state.split("_", 2)[2])
+            ctx.user_data.pop("state", None)
+            try:
+                copied = await ctx.bot.copy_message(
+                    chat_id=target_uid,
+                    from_chat_id=chat_id,
+                    message_id=m.message_id
+                )
+                save_user_reply_session(target_uid, copied.message_id)
+                await m.reply_text("✅ تم إرسال ردك للمستخدم.")
+            except Exception as e:
+                logging.warning(f"file reply to user failed: {e}")
+                await m.reply_text("⚠️ تعذر إرسال الرد للمستخدم.")
+            return
 
-    # ── رد مباشر (Telegram reply) على رسالة المستخدم ─────────────
+    # ── رد مباشر (Telegram reply) من المشرف على رسالة المستخدم ───────
     if m.reply_to_message and is_file_supervisor(uid):
         replied_mid = m.reply_to_message.message_id
         target_uid = get_file_reply_user(uid, replied_mid)
         if target_uid:
             try:
-                await ctx.bot.copy_message(
+                copied = await ctx.bot.copy_message(
                     chat_id=target_uid,
                     from_chat_id=chat_id,
                     message_id=m.message_id
                 )
+                save_user_reply_session(target_uid, copied.message_id)
                 await m.reply_text("✅ تم إرسال ردك للمستخدم.")
             except Exception as e:
                 logging.warning(f"file direct reply to user failed: {e}")
