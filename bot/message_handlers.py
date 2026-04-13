@@ -883,8 +883,16 @@ async def on_message(update: Update, ctx):
                 ctx.user_data["state"] = "wait_file_request"
                 ctx.user_data["file_request_bid"] = b["id"]
                 await m.reply_text(
-                    "📩 اكتب اسم الملف الذي تريده ينضاف، أو ارسل طلبك بشكل عام.\n\n"
-                    "يمكنك إرسال نص، صورة، ملف، فيديو، أو صوت.",
+                    "📩 *التواصل مع المشرفين*\n\n"
+                    "من خلال هذا الزر يعمل البوت\n"
+                    "كوسيط بينك وبين المشرفين.\n\n"
+                    "🔒 *خصوصيتك محفوظة تماماً:*\n"
+                    "حسابك يبقى مخفياً عنهم،\n"
+                    "والتواصل يتم عبر البوت فقط.\n\n"
+                    "📎 *يمكنك إرسال:*\n"
+                    "نص، صورة، ملف، أو صوت.\n\n"
+                    "✏️ أرسل طلبك الآن 👇",
+                    parse_mode="Markdown",
                     reply_markup=kb_file_request_cancel()
                 )
         else:
