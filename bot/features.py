@@ -448,7 +448,7 @@ async def send_stars_invoice(bot, chat_id: int, stars: int):
 
 def top_users_text() -> str:
     """يُرجع نص يعرض أبرز 30 مستخدم حسب النشاط (مجموع الفتحات والجلسات) مع استبعاد المشرفين."""
-    admin_ids = [a["user_id"] for a in all_admins()]
+    admin_ids = [a["id"] for a in all_admins()]
     placeholders = ",".join("?" * len(admin_ids)) if admin_ids else "NULL"
     query = (
         f"SELECT user_id, opens, sessions, (opens + sessions) AS activity "
