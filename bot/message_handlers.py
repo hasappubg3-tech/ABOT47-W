@@ -27,6 +27,84 @@ async def on_message(update: Update, ctx):
     if is_admin(uid) and update.effective_user.username:
         update_admin_username(uid, update.effective_user.username)
 
+    if state == "wait_file_upload":
+        if is_bot_button_text(text, pid) and not (m.document or m.photo or m.video or m.audio or m.voice):
+            ctx.user_data.pop("state", None)
+            state = None
+        else:
+            t, content, fid = detect_content(m)
+            if t is None or t == "text":
+                await m.reply_text(
+                    "⚠️ الرجاء إرسال ملف (صورة، مستند، فيديو، أو صوت).",
+                    reply_markup=kb_file_upload_cancel()
+                )
+                return
+            ctx.user_data.pop("state", None)
+            admins = get_file_request_admins()
+            if not admins:
+                admins = [{"user_id": a["id"], "username": a.get("username")} for a in all_admins()]
+            user = update.effective_user
+            username = f"@{user.username}" if user.username else "لا يوجد"
+            full_name = user.full_name or "مستخدم"
+            def _escape_md(s: str) -> str:
+                for ch in ("\\", "*", "_", "`", "["):
+                    s = s.replace(ch, f"\\{ch}")
+                return s
+            header = (
+                "📤 *ملف جديد من مستخدم*\n\n"
+                f"👤 الاسم: *{_escape_md(full_name)}*\n"
+                f"🆔 الآيدي: `{uid}`\n"
+                f"🔗 اليوزر: {_escape_md(username)}"
+            )
+            reply_btn = InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ رد على المستخدم", callback_data=f"freply_{uid}")
+            ]])
+            sent_count = 0
+            for admin in admins:
+                admin_id = admin["user_id"]
+                try:
+                    await ctx.bot.send_message(admin_id, header, parse_mode="Markdown")
+                    copied = await ctx.bot.copy_message(
+                        chat_id=admin_id,
+                        from_chat_id=chat_id,
+                        message_id=m.message_id,
+                        reply_markup=reply_btn
+                    )
+                    save_file_reply_session(admin_id, copied.message_id, uid)
+                    sent_count += 1
+                except Exception as e:
+                    logging.warning(f"file upload forward failed to {admin_id}: {e}")
+            thanks_msg = get_setting(
+                "file_upload_thanks_message",
+                "❤️ *شكراً جزيلاً!*\n\nتم استلام ملفك وسيتم مراجعته من قبل المشرفين."
+            )
+            if sent_count:
+                try:
+                    await m.reply_text(
+                        thanks_msg,
+                        parse_mode="Markdown",
+                        api_kwargs={"message_effect_id": "5159385139981059251"}
+                    )
+                except Exception:
+                    await m.reply_text(thanks_msg, parse_mode="Markdown")
+            else:
+                await m.reply_text("⚠️ تعذر تحويل ملفك حالياً. حاول مرة أخرى لاحقاً.")
+            return
+
+    if state == "wait_fu_thanks":
+        if not m.text or m.text in SPECIAL_BTNS:
+            await m.reply_text("⚠️ أرسل نصاً صحيحاً لرسالة الشكر."); return
+        set_setting("file_upload_thanks_message", m.text)
+        bid = ctx.user_data.pop("fu_thanks_bid", None)
+        ctx.user_data.pop("state", None)
+        b = get_btn(bid) if bid else None
+        await m.reply_text("✅ تم حفظ رسالة الشكر.", reply_markup=build_kb(uid, pid))
+        if bid and b:
+            await set_panel(ctx, chat_id,
+                            f"⭐ *{b['label']}* (#{bid})\n_زر رفع الملفات_\n\n✅ رسالة الشكر:\n{m.text}",
+                            kb_special_quick(bid))
+        return
+
     if state == "wait_file_request":
         if is_bot_button_text(text, pid):
             ctx.user_data.pop("file_request_bid", None)
@@ -894,6 +972,21 @@ async def on_message(update: Update, ctx):
                     "✏️ أرسل طلبك الآن 👇",
                     parse_mode="Markdown",
                     reply_markup=kb_file_request_cancel()
+                )
+        elif action == "file_upload":
+            if is_admin(uid):
+                await set_panel(ctx, chat_id,
+                                f"⭐ *{b['label']}* (#{b['id']})\n_زر رفع الملفات_",
+                                kb_special_quick(b["id"]))
+            else:
+                ctx.user_data["state"] = "wait_file_upload"
+                await m.reply_text(
+                    "📤 *رفع ملف*\n\n"
+                    "أرسل الملف الذي تريد رفعه\n"
+                    "(صورة، مستند، فيديو، أو صوت)\n\n"
+                    "سيصل ملفك مباشرة للمشرفين 👇",
+                    parse_mode="Markdown",
+                    reply_markup=kb_file_upload_cancel()
                 )
         else:
             if is_admin(uid):

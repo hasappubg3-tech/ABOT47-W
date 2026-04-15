@@ -249,6 +249,35 @@ async def cb_manage(update: Update, ctx):
             pass
         return
 
+    if d == "fu_cancel":
+        await q.answer()
+        ctx.user_data.pop("state", None)
+        try:
+            await q.edit_message_text("✅ تم الإلغاء.")
+        except Exception:
+            pass
+        return
+
+    if d.startswith("fu_thanks_set_"):
+        await q.answer()
+        bid = int(d[len("fu_thanks_set_"):])
+        if not is_admin(uid):
+            await q.answer("هذا الخيار للمشرفين فقط.", show_alert=True); return
+        cur_thanks = get_setting(
+            "file_upload_thanks_message",
+            "❤️ *شكراً جزيلاً!*\n\nتم استلام ملفك وسيتم مراجعته من قبل المشرفين."
+        )
+        ctx.user_data["state"] = "wait_fu_thanks"
+        ctx.user_data["fu_thanks_bid"] = bid
+        await q.edit_message_text(
+            f"✏️ *تعديل رسالة الشكر*\n\nالرسالة الحالية:\n_{cur_thanks}_\n\nأرسل رسالة الشكر الجديدة:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="cancel")
+            ]])
+        )
+        return
+
     # ── معالجات البومودورو (لجميع المستخدمين) ────────────────────────
     if d.startswith("pom_"):
         await q.answer()

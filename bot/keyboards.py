@@ -255,8 +255,10 @@ def kb_special_quick(bid):
         [InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")],
         [InlineKeyboardButton("🗑 حذف",          callback_data=f"confirm_x_{bid}")],
     ]
-    if b and b.get("special_action") == "file_request":
+    if b and b.get("special_action") in ("file_request", "file_upload"):
         rows.insert(0, [InlineKeyboardButton("👥 مشرفين الملفات", callback_data=f"fr_admins_{bid}")])
+    if b and b.get("special_action") == "file_upload":
+        rows.insert(1, [InlineKeyboardButton("✏️ تعديل رسالة الشكر", callback_data=f"fu_thanks_set_{bid}")])
     return InlineKeyboardMarkup(rows)
 
 def kb_file_request_admins(bid):
@@ -277,6 +279,11 @@ def kb_file_request_admins(bid):
 def kb_file_request_cancel():
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("❌ إلغاء الطلب", callback_data="fr_cancel")
+    ]])
+
+def kb_file_upload_cancel():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("❌ إلغاء", callback_data="fu_cancel")
     ]])
 
 def kb_special_container_quick(bid):
