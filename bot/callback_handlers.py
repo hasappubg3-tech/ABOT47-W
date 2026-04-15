@@ -278,6 +278,143 @@ async def cb_manage(update: Update, ctx):
         )
         return
 
+    # ── يوتيوب (لجميع المستخدمين) ────────────────────────────────────
+    if d == "yt_cancel":
+        await q.answer()
+        ctx.user_data.pop("state", None)
+        ctx.user_data.pop("yt_entries", None)
+        try:
+            await q.edit_message_text("✅ تم الإلغاء.")
+        except Exception:
+            pass
+        return
+
+    if d == "yt_back_results":
+        await q.answer()
+        entries = ctx.user_data.get("yt_entries", [])
+        if not entries:
+            try:
+                await q.edit_message_text("⚠️ انتهت صلاحية النتائج. ابحث مجدداً.")
+            except Exception:
+                pass
+            return
+        try:
+            await q.edit_message_text(
+                "🎬 *نتائج البحث:*\n\nاختر الفيديو:",
+                parse_mode="Markdown",
+                reply_markup=kb_yt_results(entries)
+            )
+        except Exception:
+            pass
+        return
+
+    if d.startswith("yt_res_"):
+        await q.answer()
+        vid_id = d[len("yt_res_"):]
+        entries = ctx.user_data.get("yt_entries", [])
+        entry = next((e for e in entries if e.get("id") == vid_id), None)
+        title = entry.get("title", "الفيديو") if entry else "الفيديو"
+        dur = entry.get("duration") if entry else None
+        dur_str = f" | ⏱ {format_duration(dur)}" if dur else ""
+        channel = entry.get("channel", "") if entry else ""
+        info_text = (
+            f"🎬 *{title}*\n"
+            f"{f'📺 {channel}' if channel else ''}{dur_str}\n\n"
+            "اختر طريقة المشاهدة:"
+        )
+        try:
+            await q.edit_message_text(
+                info_text,
+                parse_mode="Markdown",
+                reply_markup=kb_yt_choice(vid_id)
+            )
+        except Exception:
+            pass
+        return
+
+    if d.startswith("yt_video_") or d.startswith("yt_audio_"):
+        await q.answer()
+        is_video = d.startswith("yt_video_")
+        vid_id = d[len("yt_video_"):] if is_video else d[len("yt_audio_"):]
+        chat_id = q.message.chat_id
+        entries = ctx.user_data.get("yt_entries", [])
+        entry = next((e for e in entries if e.get("id") == vid_id), None)
+        title = entry.get("title", "الفيديو") if entry else "الفيديو"
+        mode_txt = "🎬 الفيديو" if is_video else "🎵 الصوت"
+        try:
+            await q.edit_message_text(
+                f"⏳ *جاري تحميل {mode_txt}…*\n\n_{title}_\n\nقد يستغرق ذلك بضع ثوانٍ، الرجاء الانتظار ☕",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+        if is_video:
+            path, dl_title, duration = await download_yt_video(vid_id)
+        else:
+            path, dl_title, duration = await download_yt_audio(vid_id)
+        real_title = dl_title or title
+        if not path:
+            try:
+                await q.edit_message_text(
+                    "❌ *تعذر التحميل*\n\nربما الفيديو محمي أو يتجاوز الحجم المسموح به (50MB).\nحاول فيديو آخر.",
+                    parse_mode="Markdown",
+                    reply_markup=kb_yt_cancel()
+                )
+            except Exception:
+                pass
+            return
+        try:
+            if is_video:
+                with open(path, "rb") as f:
+                    await ctx.bot.send_video(
+                        chat_id=chat_id,
+                        video=f,
+                        caption=f"🎬 {real_title}\n\n▶️ يوتيوب",
+                        supports_streaming=True,
+                    )
+            else:
+                with open(path, "rb") as f:
+                    await ctx.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=f,
+                        title=real_title,
+                        caption=f"🎵 {real_title}\n\n▶️ يوتيوب",
+                    )
+            try:
+                await q.edit_message_text(f"✅ *تم إرسال {mode_txt} بنجاح!*\n\n_{real_title}_", parse_mode="Markdown")
+            except Exception:
+                pass
+        except Exception as e:
+            logging.warning(f"yt send error: {e}")
+            try:
+                await q.edit_message_text(
+                    "❌ *تعذر إرسال الملف*\n\nالملف كبير جداً أو حدث خطأ.\nحاول فيديو آخر.",
+                    parse_mode="Markdown",
+                    reply_markup=kb_yt_cancel()
+                )
+            except Exception:
+                pass
+        finally:
+            cleanup_tmp(path)
+        return
+
+    if d.startswith("yt_prompt_set_"):
+        await q.answer()
+        bid = int(d[len("yt_prompt_set_"):])
+        if not is_admin(uid):
+            await q.answer("هذا الخيار للمشرفين فقط.", show_alert=True); return
+        cur = get_setting("yt_search_prompt", default_yt_prompt())
+        ctx.user_data["state"] = "wait_yt_prompt"
+        ctx.user_data["yt_prompt_bid"] = bid
+        await q.edit_message_text(
+            f"✏️ *تعديل نص الزر*\n\nالنص الحالي:\n_{cur}_\n\nأرسل النص الجديد الذي سيظهر للمستخدم عند الضغط على الزر:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="cancel")
+            ]])
+        )
+        return
+
     # ── معالجات البومودورو (لجميع المستخدمين) ────────────────────────
     if d.startswith("pom_"):
         await q.answer()
