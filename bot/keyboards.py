@@ -204,7 +204,6 @@ def build_exam_group_kb(uid, parent_bid):
     rows = []
     for topic in topics:
         rows.append([KeyboardButton(topic['label'])])
-    rows.append([KeyboardButton(BTN_EXAM_STATS)])
     rows.append([KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
@@ -221,7 +220,6 @@ def kb_exam_group_user(bid, uid):
         rows.append([InlineKeyboardButton(label, callback_data=cb)])
     if not rows:
         rows.append([InlineKeyboardButton("📭 لا توجد مواضيع بعد", callback_data="noop")])
-    rows.append([InlineKeyboardButton("📊 إحصائيتي", callback_data=f"exg_stats_{bid}")])
     return InlineKeyboardMarkup(rows)
 
 def kb_exam_group_quick(bid):

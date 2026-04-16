@@ -39,7 +39,7 @@ BTN_CANCEL   = "❌ إلغاء"
 BTN_SETTINGS = "⚙️ الاعدادات"
 
 BTN_SWAP = "🔀 تغيير"
-BTN_EXAM_STATS = "📊 إحصائياتي"
+BTN_EXAM_STATS = "📊 الامتحانات"
 
 ADMIN_BTNS   = {BTN_ADMINS}
 BTN_PLUS = "➕"

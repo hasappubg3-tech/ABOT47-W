@@ -518,6 +518,19 @@ async def cb_manage(update: Update, ctx):
         qid = int(parts[1])
         correct = parts[2] == "1"
         await q.answer("✅ تم تسجيل إجابتك" if correct else "تم تسجيلها")
+        try:
+            if correct:
+                await q.message.reply_text(
+                    "أحسنت يا بطل 🏆",
+                    message_effect_id="5046509860389126442"
+                )
+            else:
+                await q.message.reply_text(
+                    "المهم عرفت الجواب الصح ❤️",
+                    message_effect_id="5159385139981059251"
+                )
+        except Exception:
+            pass
         session = get_exam_session(ctx, bid)
         if not session:
             await q.message.reply_text("⚠️ انتهت الجلسة. اضغط على الاختبار مجدداً للبدء.")
