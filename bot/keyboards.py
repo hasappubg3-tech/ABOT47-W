@@ -189,19 +189,58 @@ def kb_exam_quick(bid):
 def exam_group_text(bid, uid):
     b = get_btn(bid)
     s = exam_group_summary(uid, bid)
+    degree = round(((s.get("correct") or 0) / (s.get("total_questions") or 1)) * 100) if s.get("total_questions") else 0
     return (
         f"🎓 *{b['label'] if b else 'زر الامتحان'}*\n\n"
         f"📚 المواضيع: *{s['completed_topics']}/{s['total_topics']}*\n"
         f"🧩 الأسئلة المجابة: *{s['answered']}/{s['total_questions']}*\n"
         f"✅ صحيحة: *{s['correct']}* | ❌ خاطئة: *{s['wrong']}*\n"
+        f"🏅 درجتي العامة: *{degree}/100*\n"
         f"📈 الإنجاز: *{s['percent']}%*\n\n"
         "ابدأ بالموضوع الأول، وبعد إكماله ينفتح الموضوع التالي."
     )
 
+def exam_score(correct, total):
+    return round(((correct or 0) / total) * 100) if total else 0
+
+def exam_group_stats_text(bid, uid):
+    b = get_btn(bid)
+    topics = get_exam_topics(bid)
+    s = exam_group_summary(uid, bid)
+    overall_degree = exam_score(s.get("correct") or 0, s.get("total_questions") or 0)
+    lines = [
+        f"📊 *إحصائيات الامتحانات: {b['label'] if b else 'زر الامتحان'}*",
+        "",
+        f"🏅 درجتي العامة: *{overall_degree}/100*",
+        f"📚 الامتحانات المكتملة: *{s['completed_topics']}/{s['total_topics']}*",
+        f"🧩 الأسئلة المجابة: *{s['answered']}/{s['total_questions']}*",
+        f"✅ صحيحة: *{s['correct']}* | ❌ خاطئة: *{s['wrong']}*",
+        "",
+        "📋 *درجاتي لكل امتحان:*",
+    ]
+    if not topics:
+        lines.append("📭 لا توجد امتحانات بعد.")
+        return "\n".join(lines)
+    for i, topic in enumerate(topics, start=1):
+        questions_count = len(get_exam_questions(topic["id"]))
+        progress = get_exam_progress(uid, topic["id"])
+        total = questions_count or (progress.get("total") or 0)
+        answered = progress.get("answered") or 0
+        correct = progress.get("correct") or 0
+        wrong = progress.get("wrong") or 0
+        degree = exam_score(correct, total)
+        status = "✅ مكتمل" if progress.get("completed") else "⏳ غير مكتمل"
+        lines.append(
+            f"\n{i}. *{topic['label']}* — {status}\n"
+            f"   🏅 درجتي: *{degree}/100*\n"
+            f"   🧩 المجابة: *{answered}/{total}* | ✅ *{correct}* | ❌ *{wrong}*"
+        )
+    return "\n".join(lines)
+
 def build_exam_group_kb(uid, parent_bid):
     """كيبورد ثابت يظهر للمستخدم عند الدخول لزر امتحان رئيسي."""
     topics = get_exam_topics(parent_bid)
-    rows = []
+    rows = [[KeyboardButton(BTN_EXAM_STATS)]]
     for topic in topics:
         rows.append([KeyboardButton(topic['label'])])
     rows.append([KeyboardButton(BTN_BACK), KeyboardButton(BTN_HOME)])

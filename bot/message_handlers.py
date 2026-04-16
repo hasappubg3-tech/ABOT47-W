@@ -1006,9 +1006,9 @@ async def on_message(update: Update, ctx):
         parent_btn = get_btn(pid) if pid else None
         if parent_btn and parent_btn["type"] == "exam_group":
             await m.reply_text(
-                exam_group_text(pid, uid),
+                exam_group_stats_text(pid, uid),
                 parse_mode="Markdown",
-                reply_markup=kb_exam_group_user(pid, uid)
+                reply_markup=build_exam_group_kb(uid, pid)
             )
         return
 

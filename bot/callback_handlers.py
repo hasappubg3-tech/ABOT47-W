@@ -559,11 +559,13 @@ async def cb_manage(update: Update, ctx):
                 reply_markup = InlineKeyboardMarkup([[
                     InlineKeyboardButton("↩️ الرجوع لقائمة الامتحانات", callback_data=f"exg_stats_{parent}")
                 ]])
+            degree = exam_score(progress.get("correct") or 0, progress.get("total") or 0)
             await q.message.reply_text(
                 "🎉 *أنهيت هذا الموضوع!*\n\n"
                 f"🧩 الأسئلة: *{progress.get('answered')}/{progress.get('total')}*\n"
                 f"✅ عرفت: *{progress.get('correct')}*\n"
-                f"❌ لم تعرف: *{progress.get('wrong')}*",
+                f"❌ لم تعرف: *{progress.get('wrong')}*\n"
+                f"🏅 درجتك: *{degree}/100*",
                 parse_mode="Markdown",
                 reply_markup=reply_markup
             )
@@ -608,11 +610,13 @@ async def cb_manage(update: Update, ctx):
         session = get_exam_session(ctx, bid)
         total = session["total"] if session else len(get_exam_questions(bid))
         progress = finish_exam_progress(uid, bid, total)
+        degree = exam_score(progress.get("correct") or 0, progress.get("total") or 0)
         await q.message.reply_text(
             "🏁 *تم إنهاء الامتحان.*\n\n"
             f"🧩 الأسئلة المجابة: *{progress.get('answered')}/{progress.get('total')}*\n"
             f"✅ عرفت: *{progress.get('correct')}*\n"
-            f"❌ لم تعرف: *{progress.get('wrong')}*",
+            f"❌ لم تعرف: *{progress.get('wrong')}*\n"
+            f"🏅 درجتك: *{degree}/100*",
             parse_mode="Markdown"
         )
         ctx.user_data.pop(_exam_session_key(bid), None)
