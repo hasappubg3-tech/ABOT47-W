@@ -23,7 +23,20 @@ def main():
     app.add_handler(MessageHandler(media_filter, on_message))
 
     logging.info("البوت يعمل...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    _webhook_domain = os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
+    if _webhook_domain:
+        _wh_url = f"https://{_webhook_domain}/{BOT_TOKEN}"
+        logging.info(f"Webhook → {_wh_url[:60]}...")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=8080,
+            url_path=BOT_TOKEN,
+            webhook_url=_wh_url,
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+        )
+    else:
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()

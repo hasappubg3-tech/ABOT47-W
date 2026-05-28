@@ -134,6 +134,9 @@ async def on_message(update: Update, ctx):
     if is_admin(uid) and _u.username:
         update_admin_username(uid, _u.username)
 
+    if not is_admin(uid) and not check_rate_limit(uid, 'msg'):
+        return
+
     if state == "wait_file_upload":
         if is_bot_button_text(text, pid) and not (m.document or m.photo or m.video or m.audio or m.voice):
             ctx.user_data.pop("state", None)

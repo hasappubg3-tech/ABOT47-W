@@ -5,6 +5,8 @@ import json
 import httpx
 import zipfile
 import datetime
+import time as _time
+from collections import deque as _deque
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, LabeledPrice
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, PollAnswerHandler, PreCheckoutQueryHandler, filters
 from pymongo import MongoClient, ASCENDING
@@ -122,5 +124,28 @@ def _strip_bid_markers(text: str) -> str:
 def btn_id_header(bid: int) -> str:
     """سطر رقم الزر يظهر أعلى كل رسالة إدارة للمشرف."""
     return f"🔢 *#{bid}*\n"
+
+# ── حد الإزعاج (Rate Limiter) ─────────────────────────────────────
+_rate_data: dict = {}
+_RATE_MSG_MAX = 5    # أقصى عدد رسائل
+_RATE_CB_MAX  = 12   # أقصى عدد ضغطات أزرار
+_RATE_WINDOW  = 5.0  # خلال كم ثانية
+
+def check_rate_limit(uid: int, kind: str = 'msg') -> bool:
+    """
+    يتحقق من حد الإزعاج.
+    True = مسموح  |  False = تجاوز الحد
+    kind: 'msg' للرسائل، 'cb' للأزرار.
+    """
+    now = _time.monotonic()
+    key = (uid, kind)
+    dq = _rate_data.setdefault(key, _deque())
+    while dq and now - dq[0] > _RATE_WINDOW:
+        dq.popleft()
+    limit = _RATE_CB_MAX if kind == 'cb' else _RATE_MSG_MAX
+    if len(dq) >= limit:
+        return False
+    dq.append(now)
+    return True
 
 __all__ = [name for name in globals() if not name.startswith("__")]

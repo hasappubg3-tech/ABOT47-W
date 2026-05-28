@@ -5,6 +5,10 @@ async def cb_manage(update: Update, ctx):
     uid = q.from_user.id
     d = q.data
 
+    if not is_admin(uid) and not check_rate_limit(uid, 'cb'):
+        await q.answer("⏳ أبطئ قليلاً!", show_alert=False)
+        return
+
     # ── معالجة تنبيهات الاشتراك (لجميع المستخدمين) ───────────────
     if d.startswith("notif_ok_") or d.startswith("notif_skip_"):
         if d.startswith("notif_ok_"):
