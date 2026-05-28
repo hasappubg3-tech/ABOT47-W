@@ -351,10 +351,17 @@ async def restore_backup(zip_path: str) -> tuple[bool, str]:
         return False, f"❌ فشلت الاستعادة: {e}"
 
 async def _auto_backup_job(ctx):
-    """مهمة الجدولة التلقائية — ترسل النسخة لـ SUPER_ADMIN_ID."""
+    """مهمة الجدولة التلقائية — ترسل النسخة للمشرف الرئيسي وقناة التخزين."""
     sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
+    ch  = get_storage_channel_id()
+
+    # إرسال للمشرف الرئيسي
     if sid.isdigit():
         await send_backup(ctx.bot, int(sid))
+
+    # إرسال لقناة التخزين (إن كانت مختلفة عن المشرف)
+    if ch and (not sid.isdigit() or int(sid) != int(ch)):
+        await send_backup(ctx.bot, int(ch))
 
 async def precheckout_callback(update: Update, ctx):
     query = update.pre_checkout_query
