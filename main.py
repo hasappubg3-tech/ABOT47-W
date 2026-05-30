@@ -24,7 +24,11 @@ def main():
     app.add_handler(MessageHandler(media_filter, on_message))
 
     logging.info("البوت يعمل...")
-    _webhook_domain = os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
+    # يدعم بيئة التطوير (REPLIT_DEV_DOMAIN) وبيئة الإنتاج (REPLIT_DOMAINS)
+    _webhook_domain = (
+        os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
+        or os.environ.get("REPLIT_DOMAINS", "").split(",")[0].strip()
+    )
     if _webhook_domain:
         _wh_url = f"https://{_webhook_domain}/{BOT_TOKEN}"
         logging.info(f"Webhook → {_wh_url[:60]}...")

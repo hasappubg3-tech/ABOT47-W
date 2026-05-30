@@ -162,16 +162,25 @@ cython_debug/
 # ── ملفات المشروع غير اللازمة للاستضافة ──────────────────────────
 # قاعدة بيانات SQLite القديمة (تم الانتقال لـ MongoDB)
 data.db
+*.db
+*.sqlite3
 
 # سكريبتات مؤقتة انتهت مهمتها
 migrate_to_mongodb.py
 transfer_buttons.py
 
-# ملفات Replit
+# ملفات Replit الداخلية (لا تُرفع)
 attached_assets/
 .local/
 .cache/
 .pythonlibs/
+.upm/
+uv.lock
 
 # مجلد الوسائط المحلية (تُخزَّن في قناة التيليجرام)
 media/
+
+# ملفات غير ضرورية للتشغيل
+Dockerfile
+generated-icon.png
+README.md
