@@ -12,6 +12,72 @@ _GC_SUBJECTS = [
 ]
 _GC_STEPS = ["الفصل الأول", "نصف السنة", "الفصل الثاني"]
 
+# ── العداد التنازلي ────────────────────────────────────────────────
+_CD_WATCH: dict = {}   # (chat_id, message_id) -> (cd_id, user_id)
+
+def _now_iraq():
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+
+def _cd_format_remaining(target_dt):
+    delta = target_dt - _now_iraq()
+    total = int(delta.total_seconds())
+    if total <= 0:
+        return "⏰ *انتهى الموعد!*"
+    d = total // 86400
+    h = (total % 86400) // 3600
+    m = (total % 3600) // 60
+    parts = []
+    if d: parts.append(f"{d} يوم")
+    if h: parts.append(f"{h} ساعة")
+    parts.append(f"{m} دقيقة")
+    return "⏳ " + "، ".join(parts)
+
+def _cd_message_text(cd):
+    remaining = _cd_format_remaining(cd["target_dt"])
+    dt_str    = cd["target_dt"].strftime("%Y/%m/%d - %H:%M")
+    personal  = "\n_🔒 موعد شخصي_" if cd.get("owner_id") is not None else ""
+    return (
+        f"📅 *{cd['label']}*{personal}\n\n"
+        f"{remaining}\n\n"
+        f"🗓 *الموعد:* `{dt_str}` (بتوقيت العراق)"
+    )
+
+def _cd_view_kb(cd_id, owner_id, uid, admin_user):
+    can_del = admin_user or (owner_id == uid)
+    back = [InlineKeyboardButton("🔙 للقائمة", callback_data="cd_back")]
+    if can_del:
+        back.append(InlineKeyboardButton("🗑 حذف", callback_data=f"cd_del_{cd_id}"))
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 تحديث",  callback_data=f"cd_refresh_{cd_id}"),
+         InlineKeyboardButton("📌 تثبيت",  callback_data=f"cd_pin_{cd_id}")],
+        back,
+    ])
+
+def _cd_list_kb(countdowns, uid, admin_user):
+    rows = []
+    for cd in countdowns:
+        icon  = "🔒" if cd.get("owner_id") is not None else "📅"
+        rows.append([InlineKeyboardButton(
+            f"{icon} {cd['label']}", callback_data=f"cd_view_{cd['id']}"
+        )])
+    label = "➕ أضف موعداً للجميع" if admin_user else "➕ أضف موعداً شخصياً"
+    rows.append([InlineKeyboardButton(label, callback_data="cd_add")])
+    return InlineKeyboardMarkup(rows)
+
+def _parse_cd_datetime(text: str):
+    text = text.strip()
+    for fmt in [
+        "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%Y/%m/%d %H:%M", "%d-%m-%Y %H:%M",
+        "%Y-%m-%d",        "%d/%m/%Y",        "%Y/%m/%d",        "%d-%m-%Y",
+    ]:
+        try:
+            dt = datetime.datetime.strptime(text, fmt)
+            if dt.year >= 2020:
+                return dt
+        except ValueError:
+            continue
+    return None
+
 def _gc_prompt_text(subject_idx: int, step: int) -> str:
     name, emoji = _GC_SUBJECTS[subject_idx]
     step_name = _GC_STEPS[step]
@@ -1309,6 +1375,61 @@ async def on_message(update: Update, ctx):
             )
         return
 
+    # ── انتظار اسم موعد العداد ────────────────────────────────────
+    if state == "wait_cd_label":
+        label = text.strip()
+        if not label or len(label) > 80:
+            await m.reply_text(
+                "⚠️ أرسل اسماً للموعد (لا يتجاوز 80 حرفاً).",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data="cd_cancel")
+                ]])
+            )
+            return
+        ctx.user_data["cd_label"] = label
+        ctx.user_data["state"]    = "wait_cd_datetime"
+        is_global = ctx.user_data.get("cd_global", False)
+        scope = "للجميع" if is_global else "شخصياً"
+        await m.reply_text(
+            f"✅ الاسم: *{label}*\n\n"
+            f"📅 الآن أرسل *تاريخ ووقت* الموعد (بتوقيت العراق UTC\\+3):\n\n"
+            f"الصيغ المقبولة:\n"
+            f"• `2026-07-15 09:00`\n"
+            f"• `15/7/2026 09:00`\n"
+            f"• `2026-07-15` _(الوقت سيكون 00:00)_\n\n"
+            f"_سيُضاف الموعد {scope}_",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ إلغاء", callback_data="cd_cancel")
+            ]])
+        )
+        return
+
+    # ── انتظار تاريخ موعد العداد ──────────────────────────────────
+    if state == "wait_cd_datetime":
+        dt = _parse_cd_datetime(text)
+        if dt is None:
+            await m.reply_text(
+                "⚠️ تنسيق التاريخ غير صحيح.\n\nأمثلة:\n• `2026-07-15 09:00`\n• `15/7/2026`",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data="cd_cancel")
+                ]])
+            )
+            return
+        label     = ctx.user_data.pop("cd_label", "موعد")
+        is_global = ctx.user_data.pop("cd_global", is_admin(uid))
+        ctx.user_data.pop("state", None)
+        owner_id  = None if is_global else uid
+        cd_add(label=label, target_dt=dt, owner_id=owner_id, created_by=uid)
+        scope = "للجميع" if owner_id is None else "شخصياً"
+        await m.reply_text(
+            f"✅ تم إضافة الموعد *{label}* {scope}!\n\n"
+            f"🗓 {dt.strftime('%Y/%m/%d - %H:%M')} (بتوقيت العراق)",
+            parse_mode="Markdown"
+        )
+        return
+
     # ── انتظار سؤال امتحان ─────────────────────────────────────────
     if state == "wait_exam_q":
         bid = ctx.user_data.pop("exam_q_bid", None)
@@ -1987,6 +2108,18 @@ async def on_message(update: Update, ctx):
             if is_admin(uid):
                 await set_panel(ctx, chat_id,
                                 f"{btn_id_header(b['id'])}⭐ *{b['label']}*\n_زر أبرز المستخدمين_",
+                                kb_special_quick(b["id"]))
+        elif action == "countdown_mgr":
+            cds  = cd_list_for_user(uid)
+            body = "اختر موعداً من القائمة لعرض العداد التنازلي:" if cds else "لا توجد مواعيد مضافة بعد.\n\nاضغط ➕ لإضافة أول موعد."
+            await m.reply_text(
+                f"📅 *مواعيد مهمة*\n\n{body}",
+                parse_mode="Markdown",
+                reply_markup=_cd_list_kb(cds, uid, is_admin(uid))
+            )
+            if is_admin(uid):
+                await set_panel(ctx, chat_id,
+                                f"{btn_id_header(b['id'])}⭐ *{b['label']}*\n_مواعيد العداد التنازلي_",
                                 kb_special_quick(b["id"]))
         elif action == "grade_calc":
             if is_admin(uid):

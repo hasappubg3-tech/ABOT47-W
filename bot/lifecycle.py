@@ -11,6 +11,40 @@ def _setup_grade_calc_feature():
         )
         logging.info("تم تعيين special_action=grade_calc للزر #8613.")
 
+def _setup_countdown_feature():
+    mdb = get_mongo_db()
+    b = mdb["buttons"].find_one({"id": 8615})
+    if b:
+        mdb["buttons"].update_one(
+            {"id": 8615},
+            {"$set": {"special_action": "countdown_mgr"}}
+        )
+        logging.info("تم تعيين special_action=countdown_mgr للزر #8615.")
+
+async def _cd_auto_update_job(ctx):
+    if not _CD_WATCH:
+        return
+    to_remove = []
+    for (chat_id, msg_id), (cd_id, user_id) in list(_CD_WATCH.items()):
+        cd = cd_get(cd_id)
+        if not cd:
+            to_remove.append((chat_id, msg_id))
+            continue
+        text = _cd_message_text(cd)
+        kb   = _cd_view_kb(cd["id"], cd.get("owner_id"), user_id, is_admin(user_id))
+        try:
+            await ctx.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+        except Exception:
+            to_remove.append((chat_id, msg_id))
+    for key in to_remove:
+        _CD_WATCH.pop(key, None)
+
 # ── إعداد البوت ──────────────────────────────────────────────────
 async def post_init(app):
     sid = os.environ.get("SUPER_ADMIN_ID", "").strip()
@@ -27,5 +61,13 @@ async def post_init(app):
     _setup_pomodoro_feature()
     logging.info("تم إعداد ميزة البومودورو.")
     _setup_grade_calc_feature()
+    _setup_countdown_feature()
+    app.job_queue.run_repeating(
+        _cd_auto_update_job,
+        interval=60,
+        first=60,
+        name="cd_auto_update"
+    )
+    logging.info("تم تسجيل مهمة تحديث العداد التنازلي كل دقيقة.")
     ses_recover_active_rooms(app.job_queue)
     logging.info("تم التحقق من استئناف الجلسات النشطة.")

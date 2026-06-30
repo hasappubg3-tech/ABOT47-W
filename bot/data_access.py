@@ -55,6 +55,8 @@ def init_db():
     mdb["comments"].create_index([("id", ASCENDING)], unique=True)
     mdb["comments"].create_index([("target_type", ASCENDING), ("target_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
     mdb["comment_reactions"].create_index([("comment_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
+    mdb["countdown_dates"].create_index([("id", ASCENDING)], unique=True)
+    mdb["countdown_dates"].create_index([("owner_id", ASCENDING)])
     logging.info("MongoDB: تم تهيئة الفهارس.")
 
 # ── المشرفون ──────────────────────────────────────────────────────
@@ -997,6 +999,35 @@ def exam_group_summary(uid, parent_bid):
         "completed_topics": completed_topics, "total_questions": total_q,
         "answered": answered, "correct": correct, "wrong": wrong, "percent": percent,
     }
+
+# ── مواعيد العداد التنازلي ────────────────────────────────────────
+def cd_add(label: str, target_dt, owner_id=None, created_by=None) -> int:
+    cid = _next_id("countdown_dates")
+    _col("countdown_dates").insert_one({
+        "id": cid, "label": label, "target_dt": target_dt,
+        "owner_id": owner_id, "created_by": created_by,
+        "created_at": datetime.datetime.utcnow(),
+    })
+    return cid
+
+def cd_list_for_user(user_id: int) -> list:
+    docs = list(_col("countdown_dates").find(
+        {"$or": [{"owner_id": None}, {"owner_id": user_id}]},
+        sort=[("owner_id", ASCENDING), ("target_dt", ASCENDING)]
+    ))
+    return [_d(d) for d in docs]
+
+def cd_list_all() -> list:
+    docs = list(_col("countdown_dates").find(
+        {}, sort=[("owner_id", ASCENDING), ("target_dt", ASCENDING)]
+    ))
+    return [_d(d) for d in docs]
+
+def cd_get(cid: int):
+    return _d(_col("countdown_dates").find_one({"id": cid}))
+
+def cd_del(cid: int):
+    _col("countdown_dates").delete_one({"id": cid})
 
 def kb_add_content_active(bid: int):
     return InlineKeyboardMarkup([[

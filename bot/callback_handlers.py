@@ -407,6 +407,125 @@ async def cb_manage(update: Update, ctx):
 
         return
 
+    # ── العداد التنازلي ───────────────────────────────────────────────
+    if d == "cd_cancel":
+        await q.answer()
+        ctx.user_data.pop("state", None)
+        ctx.user_data.pop("cd_label", None)
+        ctx.user_data.pop("cd_global", None)
+        try: await q.edit_message_text("✅ تم الإلغاء.")
+        except Exception: pass
+        return
+
+    if d == "cd_back":
+        await q.answer()
+        _CD_WATCH.pop((q.message.chat_id, q.message.message_id), None)
+        cds  = cd_list_for_user(uid)
+        body = "اختر موعداً من القائمة:" if cds else "لا توجد مواعيد مضافة بعد.\nاضغط ➕ لإضافة موعد."
+        try:
+            await q.edit_message_text(
+                f"📅 *مواعيد مهمة*\n\n{body}",
+                parse_mode="Markdown",
+                reply_markup=_cd_list_kb(cds, uid, is_admin(uid))
+            )
+        except Exception: pass
+        return
+
+    if d == "cd_add":
+        await q.answer()
+        ctx.user_data["state"]     = "wait_cd_label"
+        ctx.user_data["cd_global"] = is_admin(uid)
+        scope = "للجميع" if is_admin(uid) else "شخصياً"
+        try:
+            await q.edit_message_text(
+                f"📝 *إضافة موعد جديد* _{scope}_\n\nأرسل *اسم الموعد*:",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ إلغاء", callback_data="cd_cancel")
+                ]])
+            )
+        except Exception: pass
+        return
+
+    if d.startswith("cd_view_"):
+        cd_id = int(d[8:])
+        cd    = cd_get(cd_id)
+        await q.answer()
+        if not cd:
+            try: await q.edit_message_text("⚠️ لم يُعثر على هذا الموعد.")
+            except Exception: pass
+            return
+        text = _cd_message_text(cd)
+        kb   = _cd_view_kb(cd["id"], cd.get("owner_id"), uid, is_admin(uid))
+        try:
+            await q.edit_message_text(text, parse_mode="Markdown", reply_markup=kb)
+            _CD_WATCH[(q.message.chat_id, q.message.message_id)] = (cd_id, uid)
+        except Exception: pass
+        return
+
+    if d.startswith("cd_refresh_"):
+        cd_id = int(d[11:])
+        cd    = cd_get(cd_id)
+        await q.answer("تم التحديث ✅")
+        if not cd:
+            return
+        text = _cd_message_text(cd)
+        kb   = _cd_view_kb(cd["id"], cd.get("owner_id"), uid, is_admin(uid))
+        try:
+            await q.edit_message_text(text, parse_mode="Markdown", reply_markup=kb)
+            _CD_WATCH[(q.message.chat_id, q.message.message_id)] = (cd_id, uid)
+        except Exception: pass
+        return
+
+    if d.startswith("cd_pin_"):
+        cd_id = int(d[7:])
+        cd    = cd_get(cd_id)
+        await q.answer("📌 جاري التثبيت...")
+        if not cd:
+            return
+        pinned_text = _cd_message_text(cd)
+        old_msg     = q.message
+        _CD_WATCH.pop((old_msg.chat_id, old_msg.message_id), None)
+        try:
+            new_msg = await ctx.bot.send_message(
+                chat_id=old_msg.chat_id,
+                text=pinned_text,
+                parse_mode="Markdown"
+            )
+            try: await ctx.bot.pin_chat_message(old_msg.chat_id, new_msg.message_id, disable_notification=True)
+            except Exception: pass
+            try: await old_msg.delete()
+            except Exception: pass
+        except Exception as e:
+            logging.warning(f"cd_pin failed: {e}")
+        return
+
+    if d.startswith("cd_del_"):
+        cd_id = int(d[7:])
+        cd    = cd_get(cd_id)
+        await q.answer()
+        if not cd:
+            try: await q.edit_message_text("⚠️ لم يُعثر على هذا الموعد.")
+            except Exception: pass
+            return
+        owner_id = cd.get("owner_id")
+        if not is_admin(uid) and owner_id != uid:
+            await q.answer("⛔ لا تملك صلاحية الحذف.", show_alert=True)
+            return
+        _CD_WATCH.pop((q.message.chat_id, q.message.message_id), None)
+        label_del = cd["label"]
+        cd_del(cd_id)
+        cds  = cd_list_for_user(uid)
+        body = "اختر موعداً من القائمة:" if cds else "لا توجد مواعيد مضافة بعد.\nاضغط ➕ لإضافة موعد."
+        try:
+            await q.edit_message_text(
+                f"🗑 تم حذف *{label_del}*.\n\n📅 *مواعيد مهمة*\n\n{body}",
+                parse_mode="Markdown",
+                reply_markup=_cd_list_kb(cds, uid, is_admin(uid))
+            )
+        except Exception: pass
+        return
+
     # ── حاسبة القبول الوزاري ─────────────────────────────────────────
     if d in ("gc_start", "gc_cancel", "gc_restart"):
         await q.answer()
