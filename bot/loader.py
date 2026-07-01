@@ -5,6 +5,7 @@ MODULE_NAMES = [
     "features",
     "keyboards",
     "content_delivery",
+    "quiz_challenge",
     "message_handlers",
     "callback_handlers",
     "ai_backup_payments",

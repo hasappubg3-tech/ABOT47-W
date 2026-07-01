@@ -134,6 +134,11 @@ def _gc_calc_result(grades: dict) -> str:
 
 async def cmd_start(update: Update, ctx):
     uid = update.effective_user.id
+    # معالجة رابط التحدي /start ch_<id>
+    if ctx.args and ctx.args[0].startswith("ch_"):
+        challenge_id = ctx.args[0][3:]
+        await handle_challenge_invite(update, ctx, challenge_id)
+        return
     ctx.user_data.clear()
     kb = build_kb(uid)
     start_msg = get_start_message()
@@ -2085,7 +2090,7 @@ async def on_message(update: Update, ctx):
                             f"{btn_id_header(b['id'])}📊 *{b['label']}*\n_{len(questions)} سؤال_",
                             kb_quiz_quick(b["id"]))
         else:
-            await send_quiz_ready(m, b["id"])
+            await send_quiz_mode_select(m, b["id"])
 
     elif b["type"] == "exam":
         if is_admin(uid):

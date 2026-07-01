@@ -643,6 +643,16 @@ async def on_poll_answer(update: Update, ctx):
     data = ctx.bot_data.get("quiz_poll_map", {}).get(answer.poll_id)
     if not data or data.get("user_id") != answer.user.id:
         return
+    # وضع التحدي — يُعالج بشكل منفصل
+    if data.get("challenge_id"):
+        import asyncio as _aio
+        selected = answer.option_ids[0] if answer.option_ids else None
+        if selected is not None:
+            _aio.create_task(handle_challenge_answer(
+                ctx.bot, ctx, data["challenge_id"],
+                answer.user.id, selected, data["correct_idx"]
+            ))
+        return
     session = get_quiz_session(ctx, data["bid"])
     if not session or session.get("id") != data.get("session_id") or session.get("finished"):
         return

@@ -1036,7 +1036,138 @@ async def cb_manage(update: Update, ctx):
             await send_quiz_question(q.message, bid, question, uid=uid, random_q=random_q, ctx=ctx)
             return
 
+        # ── وضع الفردي (Solo) ──────────────────────────────────────
+        if d.startswith("quiz_solo_"):
+            bid = int(d[len("quiz_solo_"):])
+            await q.answer()
+            b = get_btn(bid)
+            title = b["label"] if b else "الكويز"
+            await q.edit_message_text(
+                f"📊 *{title}*\n\nهل أنت مستعد لبدء الكويز؟",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ نعم، مستعد", callback_data=f"quiz_start_{bid}")
+                ]])
+            )
+            return
+
+        # ── اختيار عدد أسئلة التحدي ───────────────────────────────
+        if d.startswith("quiz_ch_cnt_"):
+            parts = d[len("quiz_ch_cnt_"):].split("_")
+            bid = int(parts[0])
+            count = int(parts[1])
+            question_limit = count if count > 0 else None
+            await q.answer()
+            name = q.from_user.first_name or "مجهول"
+            cid = q.message.chat_id
+            challenge_id = create_challenge_session(ctx, uid, name, cid, bid, question_limit)
+            me = await ctx.bot.get_me()
+            link = f"https://t.me/{me.username}?start=ch_{challenge_id}"
+            qs_total = len(get_quiz_questions(bid))
+            count_text = str(question_limit) if question_limit else f"جميع ({qs_total})"
+            await q.edit_message_text(
+                f"⚔️ *رابط التحدي جاهز!*\n\n"
+                f"📨 أرسله للشخص الذي تريد تحديه:\n\n"
+                f"`{link}`\n\n"
+                f"❓ عدد الأسئلة: *{count_text}*\n"
+                f"⏳ في انتظار قبول التحدي...",
+                parse_mode="Markdown"
+            )
+            return
+
+        # ── إنشاء تحدي — اختيار عدد الأسئلة ─────────────────────
+        if d.startswith("quiz_ch_"):
+            bid = int(d[len("quiz_ch_"):])
+            await q.answer()
+            all_qs = get_quiz_questions(bid)
+            total = len(all_qs)
+            if total == 0:
+                await q.edit_message_text("📭 لا توجد أسئلة في هذا الكويز.")
+                return
+            count_btns = [
+                InlineKeyboardButton(str(n), callback_data=f"quiz_ch_cnt_{bid}_{n}")
+                for n in [5, 10, 15, 20] if n <= total
+            ]
+            rows = []
+            if count_btns:
+                rows.append(count_btns)
+            rows.append([InlineKeyboardButton(
+                f"🎲 الكل ({total} سؤال)",
+                callback_data=f"quiz_ch_cnt_{bid}_0"
+            )])
+            await q.edit_message_text(
+                "⚔️ *إنشاء تحدي*\n\nكم سؤالاً تريد في التحدي؟",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(rows)
+            )
+            return
+
         await q.answer()
+        return
+
+    # ── قبول / رفض التحدي ────────────────────────────────────────
+    if d.startswith("ch_accept_"):
+        challenge_id = d[len("ch_accept_"):]
+        session = get_challenge_session(ctx, challenge_id)
+        if not session or session["status"] != "pending":
+            await q.answer("❌ هذا التحدي لم يعد متاحاً.", show_alert=True)
+            return
+        if uid == session["challenger"]["uid"]:
+            await q.answer("😅 لا يمكنك قبول تحديك الخاص!", show_alert=True)
+            return
+        await q.answer("✅ قبلت التحدي!")
+        session["challenged"] = {
+            "uid": uid,
+            "chat_id": q.message.chat_id,
+            "name": q.from_user.first_name or "مجهول",
+        }
+        session["scores"][str(uid)] = 0
+        session["status"] = "active"
+        await q.edit_message_text("✅ قبلت التحدي! استعد للانطلاق...")
+        try:
+            await ctx.bot.send_message(
+                session["challenger"]["chat_id"],
+                f"⚔️ *{session['challenged']['name']}* قبل التحدي!\n\nاستعد...",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+        import asyncio
+        for n in ("3️⃣", "2️⃣", "1️⃣"):
+            for role in ("challenger", "challenged"):
+                p = session[role]
+                if p:
+                    try:
+                        await ctx.bot.send_message(p["chat_id"], f"*{n}*", parse_mode="Markdown")
+                    except Exception:
+                        pass
+            await asyncio.sleep(1)
+        for role in ("challenger", "challenged"):
+            p = session[role]
+            if p:
+                try:
+                    await ctx.bot.send_message(p["chat_id"], "🚀 *انطلق!*", parse_mode="Markdown")
+                except Exception:
+                    pass
+        await send_challenge_question_to_both(ctx.bot, ctx, challenge_id)
+        return
+
+    if d.startswith("ch_reject_"):
+        challenge_id = d[len("ch_reject_"):]
+        await q.answer("تم الرفض")
+        session = get_challenge_session(ctx, challenge_id)
+        if session and session["status"] == "pending":
+            session["status"] = "finished"
+            rejected_name = q.from_user.first_name or "شخص ما"
+            try:
+                await ctx.bot.send_message(
+                    session["challenger"]["chat_id"],
+                    f"❌ *{rejected_name}* رفض التحدي.",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        await q.edit_message_text("✅ تم رفض التحدي.")
         return
 
     # ── كول باكات الامتحان (لجميع المستخدمين) ──────────────────────
