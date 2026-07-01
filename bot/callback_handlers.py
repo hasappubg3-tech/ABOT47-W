@@ -1067,12 +1067,12 @@ async def cb_manage(update: Update, ctx):
             count_text = str(question_limit) if question_limit else f"جميع ({qs_total})"
             await q.edit_message_text(
                 f"⚔️ *رابط التحدي جاهز!*\n\n"
-                f"📨 أرسله للشخص الذي تريد تحديه:\n\n"
-                f"`{link}`\n\n"
                 f"❓ عدد الأسئلة: *{count_text}*\n"
+                f"📨 أرسل الرابط التالي للشخص الذي تريد تحديه:\n\n"
                 f"⏳ في انتظار قبول التحدي...",
                 parse_mode="Markdown"
             )
+            await ctx.bot.send_message(chat_id=cid, text=link)
             return
 
         # ── إنشاء تحدي — اختيار عدد الأسئلة ─────────────────────

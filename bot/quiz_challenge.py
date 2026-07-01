@@ -49,7 +49,7 @@ async def send_quiz_mode_select(m, bid):
         f"📊 *{title}*\n{count_text}\n\nكيف تريد أداء الاختبار؟",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("👤 وحده", callback_data=f"quiz_solo_{bid}"),
+            InlineKeyboardButton("👤 بمفردي", callback_data=f"quiz_solo_{bid}"),
             InlineKeyboardButton("⚔️ تحدي شخص", callback_data=f"quiz_ch_{bid}"),
         ]])
     )
