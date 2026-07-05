@@ -304,7 +304,9 @@ async def send_items(m, bid, uid=None, bot=None):
         # النظام 1: هل هناك تنبيه منبثق معلق؟
         pending_bid = get_pending_notif(uid)
         if pending_bid:
-            await resend_notif_gate(m, uid, pending_bid)
+            if pending_bid != bid:
+                set_pending_notif(uid, bid)
+            await resend_notif_gate(m, uid, bid)
             return
 
         # فحص الاشتراك في القناة (مرة واحدة فقط)
