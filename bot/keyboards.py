@@ -632,7 +632,11 @@ def kb_menu_quick(bid):
     rows = [
         [InlineKeyboardButton("✏️ تغيير الاسم", callback_data=f"el_{bid}")],
     ]
-    if b: rows.append(_hidden_toggle_row(b))
+    if b:
+        rows.append(_hidden_toggle_row(b))
+        sort_on = bool(b.get("sort_alpha", 0))
+        sort_label = "🔤 الترتيب الأبجدي: ✅ مفعّل" if sort_on else "🔤 الترتيب الأبجدي: ⭕ مُلغى"
+        rows.append([InlineKeyboardButton(sort_label, callback_data=f"menu_sort_toggle_{bid}")])
     rows.append([InlineKeyboardButton("🗑 حذف", callback_data=f"confirm_x_{bid}")])
     if len(siblings) >= 2:
         rows.append([InlineKeyboardButton("🔀 تبديل الموضع", callback_data=f"swp_start_{'r' if pid is None else str(pid)}")])

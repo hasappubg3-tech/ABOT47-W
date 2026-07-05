@@ -2196,8 +2196,17 @@ async def cb_manage(update: Update, ctx):
         bid = int(d[len("menu_sort_toggle_"):])
         toggle_sort_alpha(bid)
         b = get_btn(bid)
+        # نحدد اللوحة الصحيحة لإعادة رسمها حسب مصدر الضغط (لوحة سريعة أم لوحة إدارة)
+        is_edit_panel = False
+        cur_markup = q.message.reply_markup if q.message else None
+        if cur_markup:
+            for row in cur_markup.inline_keyboard:
+                for btn in row:
+                    if btn.callback_data == f"m_{bid}":
+                        is_edit_panel = True
+        new_markup = kb_edit_menu_btn(bid) if is_edit_panel else kb_menu_quick(bid)
         await q.edit_message_text(f"{btn_id_header(bid)}📂 *{b['label'] if b else ''}*", parse_mode="Markdown",
-                                  reply_markup=kb_edit_menu_btn(bid))
+                                  reply_markup=new_markup)
         return
 
     # ── إدارة الكويز ──────────────────────────────────────────────
