@@ -22,6 +22,8 @@ async def _error_handler(update, context):
 def main():
     if not BOT_TOKEN:
         logging.error("TELEGRAM_BOT_TOKEN غير موجود!"); return
+    if not MONGODB_URI:
+        logging.error("MONGODB_URI غير موجود!"); return
     init_db()
     from telegram.ext import JobQueue
     import httpx, asyncio
