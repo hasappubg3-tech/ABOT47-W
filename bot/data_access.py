@@ -59,7 +59,44 @@ def init_db():
     mdb["countdown_dates"].create_index([("id", ASCENDING)], unique=True)
     mdb["countdown_dates"].create_index([("owner_id", ASCENDING)])
     mdb["quiz_results"].create_index([("user_id", ASCENDING), ("button_id", ASCENDING)], unique=True)
+    mdb["btn_twins"].create_index([("a", ASCENDING)], unique=True)
+    mdb["btn_twins"].create_index([("b", ASCENDING)], unique=True)
+    mdb["item_twins"].create_index([("a", ASCENDING)], unique=True)
+    mdb["item_twins"].create_index([("b", ASCENDING)], unique=True)
     logging.info("MongoDB: تم تهيئة الفهارس.")
+
+# ── القوائم المرتبطة (مزامنة تلقائية بين قائمتين توأمتين) ──────────
+# ميزة غير رسمية: قائمتان "متوأمتان" تُطابق كل منهما الأخرى تلقائياً —
+# أي زر/محتوى يُضاف أو يُعدَّل أو يُحذف في إحداهما يُطبَّق فوراً على الأخرى،
+# والتقييمات/التعليقات موحّدة بينهما (نفس السجل الفعلي في القاعدة).
+def get_twin(bid):
+    doc = _col("btn_twins").find_one({"$or": [{"a": bid}, {"b": bid}]})
+    if not doc:
+        return None
+    return doc["b"] if doc["a"] == bid else doc["a"]
+
+def set_twin(bid1, bid2):
+    _col("btn_twins").delete_many({"$or": [{"a": bid1}, {"b": bid1}, {"a": bid2}, {"b": bid2}]})
+    _col("btn_twins").insert_one({"a": bid1, "b": bid2})
+
+def get_item_twin(iid):
+    doc = _col("item_twins").find_one({"$or": [{"a": iid}, {"b": iid}]})
+    if not doc:
+        return None
+    return doc["b"] if doc["a"] == iid else doc["a"]
+
+def set_item_twin(iid1, iid2):
+    _col("item_twins").delete_many({"$or": [{"a": iid1}, {"b": iid1}, {"a": iid2}, {"b": iid2}]})
+    _col("item_twins").insert_one({"a": iid1, "b": iid2})
+
+def canonical_btn_id(bid):
+    """يوحّد هوية الزر مع توأمه — يُستخدم للتقييمات/التعليقات كي تكون مشتركة."""
+    twin = get_twin(bid)
+    return min(bid, twin) if twin is not None else bid
+
+def canonical_item_id(iid):
+    twin = get_item_twin(iid)
+    return min(iid, twin) if twin is not None else iid
 
 # ── المشرفون ──────────────────────────────────────────────────────
 def is_real_admin(uid):
@@ -171,7 +208,7 @@ def _renumber(ids):
     for i, bid in enumerate(ids):
         _col("buttons").update_one({"id": bid}, {"$set": {"ord": i + 1}})
 
-def add_btn(pid, t, label):
+def add_btn(pid, t, label, _sync=True):
     ids = _siblings_ids(pid)
     ur = 1 if t == "content" else 0
     new_id = _next_id("buttons")
@@ -182,9 +219,14 @@ def add_btn(pid, t, label):
         "hidden": 0, "special_action": None, "compound_text": None,
         "random_quiz": 0, "random_exam": 0,
     })
+    if _sync:
+        twin_pid = get_twin(pid)
+        if twin_pid is not None:
+            twin_new_id = add_btn(twin_pid, t, label, _sync=False)
+            set_twin(new_id, twin_new_id)
     return new_id
 
-def add_btn_before(before_bid, pid, t, label):
+def add_btn_before(before_bid, pid, t, label, _sync=True):
     ids = _siblings_ids(pid)
     pos = ids.index(before_bid) if before_bid in ids else 0
     ur = 1 if t == "content" else 0
@@ -198,9 +240,18 @@ def add_btn_before(before_bid, pid, t, label):
     })
     ids.insert(pos, new_id)
     _renumber(ids)
+    if _sync:
+        twin_pid = get_twin(pid)
+        if twin_pid is not None:
+            twin_before = get_twin(before_bid)
+            if twin_before is not None:
+                twin_new_id = add_btn_before(twin_before, twin_pid, t, label, _sync=False)
+            else:
+                twin_new_id = add_btn(twin_pid, t, label, _sync=False)
+            set_twin(new_id, twin_new_id)
     return new_id
 
-def add_btn_after(after_bid, pid, t, label, new_row=1):
+def add_btn_after(after_bid, pid, t, label, new_row=1, _sync=True):
     ids = _siblings_ids(pid)
     if after_bid is None:
         pos = 0
@@ -217,12 +268,25 @@ def add_btn_after(after_bid, pid, t, label, new_row=1):
     })
     ids.insert(pos, new_id)
     _renumber(ids)
+    if _sync:
+        twin_pid = get_twin(pid)
+        if twin_pid is not None:
+            twin_after = get_twin(after_bid) if after_bid is not None else None
+            if after_bid is None or twin_after is not None:
+                twin_new_id = add_btn_after(twin_after, twin_pid, t, label, new_row=new_row, _sync=False)
+            else:
+                twin_new_id = add_btn(twin_pid, t, label, _sync=False)
+            set_twin(new_id, twin_new_id)
     return new_id
 
-def upd_btn_label(bid, label):
+def upd_btn_label(bid, label, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"label": label}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            upd_btn_label(twin, label, _sync=False)
 
-def toggle_sort_by_year(bid):
+def toggle_sort_by_year(bid, _sync=True):
     """يفعّل / يلغي خاصية الترتيب التلقائي حسب السنة للزر المدمج."""
     b = get_btn(bid)
     if not b:
@@ -230,9 +294,13 @@ def toggle_sort_by_year(bid):
     current = b.get("sort_by_year", 0) or 0
     new_val = 0 if current else 1
     _col("buttons").update_one({"id": bid}, {"$set": {"sort_by_year": new_val}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            _col("buttons").update_one({"id": twin}, {"$set": {"sort_by_year": new_val}})
     return bool(new_val)
 
-def toggle_sort_alpha(bid):
+def toggle_sort_alpha(bid, _sync=True):
     """يفعّل / يلغي خاصية الترتيب الأبجدي التلقائي لأزرار القائمة."""
     b = get_btn(bid)
     if not b:
@@ -240,10 +308,18 @@ def toggle_sort_alpha(bid):
     current = b.get("sort_alpha", 0) or 0
     new_val = 0 if current else 1
     _col("buttons").update_one({"id": bid}, {"$set": {"sort_alpha": new_val}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            _col("buttons").update_one({"id": twin}, {"$set": {"sort_alpha": new_val}})
     return bool(new_val)
 
-def del_btn(bid):
+def del_btn(bid, _sync=True):
     _soft_delete_btn_recursive(bid)
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            del_btn(twin, _sync=False)
 
 def _soft_delete_btn_recursive(bid):
     """حذف ناعم — يخفي الزر وأبناءه ويحتفظ بالبيانات للاستعادة أو النسخ."""
@@ -368,25 +444,45 @@ def get_compound_text(bid):
     txt = doc.get("compound_text") if doc else None
     return txt if (txt is not None and str(txt).strip() != "") else "اختر:"
 
-def set_compound_text(bid, text):
+def set_compound_text(bid, text, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"compound_text": text}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_compound_text(twin, text, _sync=False)
 
-def set_btn_unified_rating(bid, val=1):
+def set_btn_unified_rating(bid, val=1, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"unified_rating": 1 if val else 0}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_btn_unified_rating(twin, val, _sync=False)
 
-def set_btn_hidden(bid, val=1):
+def set_btn_hidden(bid, val=1, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"hidden": 1 if val else 0}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_btn_hidden(twin, val, _sync=False)
 
-def toggle_btn_maintenance(bid) -> bool:
+def toggle_btn_maintenance(bid, _sync=True) -> bool:
     b = get_btn(bid)
     if not b:
         return False
     new_val = 0 if (b.get("maintenance", 0) or 0) else 1
     _col("buttons").update_one({"id": bid}, {"$set": {"maintenance": new_val}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            _col("buttons").update_one({"id": twin}, {"$set": {"maintenance": new_val}})
     return bool(new_val)
 
-def set_btn_maintenance_msg(bid, msg: str):
+def set_btn_maintenance_msg(bid, msg: str, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"maintenance_msg": msg}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_btn_maintenance_msg(twin, msg, _sync=False)
 
 def get_btn_maintenance_msg(bid) -> str:
     b = get_btn(bid)
@@ -394,11 +490,19 @@ def get_btn_maintenance_msg(bid) -> str:
         return ""
     return b.get("maintenance_msg") or ""
 
-def set_btn_no_caption(bid, val=1):
+def set_btn_no_caption(bid, val=1, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"no_caption": 1 if val else 0}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_btn_no_caption(twin, val, _sync=False)
 
-def set_btn_no_btn_caption(bid, val=1):
+def set_btn_no_btn_caption(bid, val=1, _sync=True):
     _col("buttons").update_one({"id": bid}, {"$set": {"no_btn_caption": 1 if val else 0}})
+    if _sync:
+        twin = get_twin(bid)
+        if twin is not None:
+            set_btn_no_btn_caption(twin, val, _sync=False)
 
 def propagate_compound_settings(parent_bid):
     parent = get_btn(parent_bid)
@@ -578,7 +682,7 @@ def get_items_missing_channel():
     }).sort("id", 1)
     return [_d(r) for r in docs]
 
-def add_item(bid, t, content=None, file_id=None, local_path=None, channel_msg_id=None):
+def add_item(bid, t, content=None, file_id=None, local_path=None, channel_msg_id=None, _sync=True):
     last = _col("content_items").find_one({"button_id": bid}, sort=[("ord", -1)])
     n = (last["ord"] if last else 0) + 1
     new_id = _next_id("content_items")
@@ -587,6 +691,12 @@ def add_item(bid, t, content=None, file_id=None, local_path=None, channel_msg_id
         "content": content, "file_id": file_id,
         "local_path": local_path, "channel_msg_id": channel_msg_id, "ord": n
     })
+    if _sync:
+        twin_bid = get_twin(bid)
+        if twin_bid is not None:
+            twin_item_id = add_item(twin_bid, t, content, file_id, local_path, channel_msg_id, _sync=False)
+            set_item_twin(new_id, twin_item_id)
+    return new_id
 
 def upd_item_file_id(iid, file_id):
     _col("content_items").update_one({"id": iid}, {"$set": {"file_id": file_id}})
@@ -594,21 +704,34 @@ def upd_item_file_id(iid, file_id):
 def upd_item_channel_msg_id(iid, channel_msg_id):
     _col("content_items").update_one({"id": iid}, {"$set": {"channel_msg_id": channel_msg_id}})
 
-def del_item(iid):
+def del_item(iid, _sync=True):
     _col("content_items").delete_one({"id": iid})
+    if _sync:
+        twin_iid = get_item_twin(iid)
+        if twin_iid is not None:
+            del_item(twin_iid, _sync=False)
 
-def upd_item_content(iid, content):
+def upd_item_content(iid, content, _sync=True):
     _col("content_items").update_one({"id": iid}, {"$set": {"content": content}})
+    if _sync:
+        twin_iid = get_item_twin(iid)
+        if twin_iid is not None:
+            upd_item_content(twin_iid, content, _sync=False)
 
-def upd_items_desc(bid, new_desc):
+def upd_items_desc(bid, new_desc, _sync=True):
     """يحدّث الوصف (content) لجميع عناصر زر المحتوى المحدد."""
     _col("content_items").update_many({"button_id": bid}, {"$set": {"content": new_desc}})
+    if _sync:
+        twin_bid = get_twin(bid)
+        if twin_bid is not None:
+            upd_items_desc(twin_bid, new_desc, _sync=False)
 
 def get_item(iid):
     return _d(_col("content_items").find_one({"id": iid}))
 
 # ── تقييم العناصر ────────────────────────────────────────────────
 def get_item_rating_summary(iid: int) -> dict:
+    iid = canonical_item_id(iid)
     pipeline = [
         {"$match": {"item_id": iid}},
         {"$group": {"_id": None, "cnt": {"$sum": 1}, "avg_rating": {"$avg": "$rating"}}}
@@ -620,10 +743,12 @@ def get_item_rating_summary(iid: int) -> dict:
     return {"count": r["cnt"], "avg": float(r.get("avg_rating") or 0)}
 
 def get_user_item_rating(iid: int, uid: int):
+    iid = canonical_item_id(iid)
     doc = _col("item_ratings").find_one({"item_id": iid, "user_id": uid})
     return doc["rating"] if doc else None
 
 def save_item_rating(iid: int, uid: int, rating: int):
+    iid = canonical_item_id(iid)
     _col("item_ratings").update_one(
         {"item_id": iid, "user_id": uid},
         {"$set": {"item_id": iid, "user_id": uid, "rating": rating, "rated_at": int(_time.time())}},
@@ -672,6 +797,7 @@ async def send_item_rating_message(target, item, uid=None):
 
 # ── تقييم موحد على مستوى الزر ────────────────────────────────────
 def get_btn_rating_summary(bid: int) -> dict:
+    bid = canonical_btn_id(bid)
     pipeline = [
         {"$match": {"button_id": bid}},
         {"$group": {"_id": None, "cnt": {"$sum": 1}, "avg_rating": {"$avg": "$rating"}}}
@@ -683,10 +809,12 @@ def get_btn_rating_summary(bid: int) -> dict:
     return {"count": r["cnt"], "avg": float(r.get("avg_rating") or 0)}
 
 def get_user_btn_rating(bid: int, uid: int):
+    bid = canonical_btn_id(bid)
     doc = _col("button_ratings").find_one({"button_id": bid, "user_id": uid})
     return doc["rating"] if doc else None
 
 def save_btn_rating(bid: int, uid: int, rating: int):
+    bid = canonical_btn_id(bid)
     _col("button_ratings").update_one(
         {"button_id": bid, "user_id": uid},
         {"$set": {"button_id": bid, "user_id": uid, "rating": rating, "rated_at": int(_time.time())}},
@@ -724,7 +852,11 @@ async def send_btn_unified_rating_message(target, bid: int, uid=None):
     await target.reply_text(btn_rating_text(bid, uid), reply_markup=kb_btn_rating(bid))
 
 # ── التعليقات ─────────────────────────────────────────────────────
+def _canonical_target_id(target_type: str, target_id: int) -> int:
+    return canonical_item_id(target_id) if target_type == "item" else canonical_btn_id(target_id)
+
 def save_comment(target_type: str, target_id: int, user_id: int, display_name: str, text: str) -> int:
+    target_id = _canonical_target_id(target_type, target_id)
     cid = _next_id("comments")
     _col("comments").insert_one({
         "id": cid, "target_type": target_type, "target_id": target_id,
@@ -738,11 +870,13 @@ def get_comment(cid: int):
     return _d(_col("comments").find_one({"id": cid}))
 
 def get_comments(target_type: str, target_id: int) -> list:
+    target_id = _canonical_target_id(target_type, target_id)
     docs = [_d(c) for c in _col("comments").find({"target_type": target_type, "target_id": target_id})]
     docs.sort(key=lambda c: (c.get("likes", 0) + c.get("dislikes", 0), c.get("created_at", 0)), reverse=True)
     return docs
 
 def get_user_comment(target_type: str, target_id: int, user_id: int):
+    target_id = _canonical_target_id(target_type, target_id)
     return _d(_col("comments").find_one({"target_type": target_type, "target_id": target_id, "user_id": user_id}))
 
 def react_comment(cid: int, user_id: int, reaction: str) -> dict:

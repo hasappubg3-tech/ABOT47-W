@@ -1,1 +1,2 @@
 - [Telegram bot decline-escalation flow](telegram-decline-escalation.md) — how the "اشتراك إجباري" 5-stage decline ladder is wired across callback_handlers/features/content_delivery; read before touching notif_* logic.
+- [Menu twin-mirroring feature](menu-twin-mirroring.md) — bespoke bidirectional sync between menu pairs (1966<->3101, 2017<->3106); read before touching button/item CRUD or ratings/comments in data_access.py.
