@@ -400,36 +400,16 @@ async def _ai_chat_respond_inner(uid: int, text: str = None, image_b64: str = No
     # بناء محتوى المحادثة
     if image_b64 and image_mime:
         # سؤال بصورة — نستخدم Vision
-        parts = []
-        if text:
-            parts.append({"text": f"{AI_SIXTH_GRADE_SYSTEM_PROMPT}\n\nسؤال الطالب: {text}"})
-        else:
-            parts.append({"text": f"{AI_SIXTH_GRADE_SYSTEM_PROMPT}\n\nحلل الصورة وأجب على ما فيها."})
-        parts.append({"inline_data": {"mime_type": image_mime, "data": image_b64}})
-
-        # إضافة الذاكرة في حالة الصور (كنص فقط)
-        history_parts = []
+        prompt_text = AI_SIXTH_GRADE_SYSTEM_PROMPT
         if memory_on:
             history = get_ai_chat_history(uid)
             for turn in history[-memory_count:]:
-                history_parts.append({"text": f"[محادثة سابقة] الطالب: {turn.get('q','')}\nأنت: {turn.get('a','')}"})
+                prompt_text += f"\n[سابق] الطالب: {turn.get('q','')}\nأنت: {turn.get('a','')}"
+        prompt_text += f"\n\nسؤال الطالب: {text or 'حلل الصورة وأجب على الأسئلة الموجودة فيها بالتفصيل باللغة العربية.'}"
 
-        if history_parts:
-            parts = [{"text": AI_SIXTH_GRADE_SYSTEM_PROMPT + "\n\nسياق المحادثة السابقة:\n" + "\n".join(p["text"] for p in history_parts)}] + parts[1:]
-
-        payload = {"contents": [{"parts": parts}]}
         try:
             async with httpx.AsyncClient() as client:
-                answer = await _call_gemini_vision(client, "", [{"data": image_b64, "mime": image_mime}])
-                if not answer:
-                    # محاولة ثانية مع prompt كامل
-                    prompt_text = AI_SIXTH_GRADE_SYSTEM_PROMPT
-                    if memory_on:
-                        history = get_ai_chat_history(uid)
-                        for turn in history[-memory_count:]:
-                            prompt_text += f"\n[سابق] الطالب: {turn.get('q','')}\nأنت: {turn.get('a','')}"
-                    prompt_text += f"\n\nسؤال الطالب: {text or 'حلل الصورة وأجب.'}"
-                    answer = await _call_gemini_vision(client, prompt_text, [{"data": image_b64, "mime": image_mime}])
+                answer = await _call_gemini_vision(client, prompt_text, [{"data": image_b64, "mime": image_mime}])
         except Exception as e:
             logging.error(f"ai_chat_respond vision error: {e}")
             return "⚠️ تعذّر تحليل الصورة. حاول مرة أخرى."
