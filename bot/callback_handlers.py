@@ -449,7 +449,7 @@ async def cb_manage(update: Update, ctx):
         label = "الملف" if target_type == "item" else "المحتوى"
         text = f"💬 تعليقات {label}\n\nعدد التعليقات: {len(comments)}"
         if not comments:
-            text += "\n\nلا يوجد تعليقات بعد، كن أول من يعلّق! 🙂"
+            text += "\n\nلا يوجد تعليقات بعد، كن أول من يعلّق!"
         await q.edit_message_text(text, reply_markup=kb_comments_list(target_type, target_id))
         return
 
@@ -535,7 +535,7 @@ async def cb_manage(update: Update, ctx):
             label = "الملف" if target_type == "item" else "المحتوى"
             text = f"💬 تعليقات {label}\n\nعدد التعليقات: {len(comments)}"
             if not comments:
-                text += "\n\nلا يوجد تعليقات بعد، كن أول من يعلّق! 🙂"
+                text += "\n\nلا يوجد تعليقات بعد، كن أول من يعلّق!"
             await q.edit_message_text(text, reply_markup=kb_comments_list(target_type, target_id))
             return
 
