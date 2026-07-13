@@ -50,17 +50,25 @@ async def _call_gemini_text(prompt: str) -> str | None:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             for key in keys:
                 try:
-                    resp = await client.post(url, params={"key": key}, json=payload, timeout=30)
+                    resp = await client.post(url, params={"key": key}, json=payload, timeout=90)
                     if resp.status_code in (429, 503):
+                        logging.warning(f"[MLZ] {model} key …{key[-6:]} rate-limited ({resp.status_code}), جرب التالي…")
                         continue
                     if resp.status_code == 404:
+                        logging.warning(f"[MLZ] النموذج {model} غير موجود، جرب النموذج التالي…")
                         break
-                    resp.raise_for_status()
-                    text = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    if resp.status_code in (400, 401, 403):
+                        logging.warning(f"[MLZ] {model} key …{key[-6:]} مرفوض ({resp.status_code}), جرب التالي…")
+                        continue
+                    if not resp.is_success:
+                        logging.warning(f"[MLZ] {model} key …{key[-6:]} HTTP {resp.status_code}, جرب التالي…")
+                        continue
+                    text = (resp.json().get("candidates") or [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                     if text:
                         return text
+                    logging.warning(f"[MLZ] {model} key …{key[-6:]} أعاد نصاً فارغاً، جرب التالي…")
                 except Exception as e:
-                    logging.warning(f"[MLZ] Gemini error: {e}")
+                    logging.warning(f"[MLZ] {model} key …{key[-6:]} خطأ: {type(e).__name__}: {e}, جرب التالي…")
     return None
 
 # ── استخراج المعلومات الأربع بالذكاء الاصطناعي ───────────────────

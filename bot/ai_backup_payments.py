@@ -165,18 +165,38 @@ async def _process_image_batch(wait_msg, m, ctx, uid, pid, images: list, btn_typ
         await wait_msg.edit_text("⚠️ لم يُعثر على أزرار في الصور.")
 
 async def _call_gemini(client: httpx.AsyncClient, prompt: str):
-    """يستدعي Gemini API مع تدوير المفاتيح تلقائياً."""
+    """يستدعي Gemini API مع تدوير المفاتيح والنماذج تلقائياً."""
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    for key in get_all_gemini_keys():
-        if len(key) < 20:
-            continue
-        resp = await client.post(url, params={"key": key}, json=payload, timeout=60)
-        if resp.status_code in (429, 503):
-            logging.warning(f"Gemini key ...{key[-6:]} rate-limited, trying next key...")
-            continue
-        resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    _models = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]
+    # إزالة التكرار مع الحفاظ على الترتيب
+    seen = set()
+    models_order = [m for m in _models if not (m in seen or seen.add(m))]
+    for model in models_order:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for key in get_all_gemini_keys():
+            if len(key) < 20:
+                continue
+            try:
+                resp = await client.post(url, params={"key": key}, json=payload, timeout=90)
+                if resp.status_code in (429, 503):
+                    logging.warning(f"[AI] {model} key …{key[-6:]} rate-limited ({resp.status_code}), جرب المفتاح التالي…")
+                    continue
+                if resp.status_code == 404:
+                    logging.warning(f"[AI] النموذج {model} غير موجود، جرب النموذج التالي…")
+                    break  # انتقل للنموذج التالي
+                if resp.status_code in (400, 401, 403):
+                    logging.warning(f"[AI] {model} key …{key[-6:]} مرفوض ({resp.status_code}), جرب المفتاح التالي…")
+                    continue
+                if not resp.is_success:
+                    logging.warning(f"[AI] {model} key …{key[-6:]} HTTP {resp.status_code}, جرب المفتاح التالي…")
+                    continue
+                data = resp.json()
+                text = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    return text
+                logging.warning(f"[AI] {model} key …{key[-6:]} أعاد نصاً فارغاً، جرب المفتاح التالي…")
+            except Exception as e:
+                logging.warning(f"[AI] {model} key …{key[-6:]} خطأ: {type(e).__name__}: {e}, جرب المفتاح التالي…")
     return None
 
 async def generate_quiz_questions(source_text: str, count: int):
