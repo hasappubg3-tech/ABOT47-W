@@ -1,4 +1,5 @@
 from .shared import *
+from telegram import InputMediaPhoto, InputMediaVideo, InputMediaDocument
 
 def detect_content(m):
     if m.photo:
@@ -168,6 +169,59 @@ async def send_file_item(target, item, reply_markup=None, extra_caption="", bot=
 
     return None
 
+def _group_items(items):
+    """تجمّع العناصر المتتالية التي تشترك في نفس group_id في قوائم فرعية."""
+    groups = []
+    i = 0
+    while i < len(items):
+        gid = items[i].get("group_id")
+        if gid is not None:
+            group = [items[i]]
+            j = i + 1
+            while j < len(items) and items[j].get("group_id") == gid:
+                group.append(items[j])
+                j += 1
+            groups.append(group)
+            i = j
+        else:
+            groups.append([items[i]])
+            i += 1
+    return groups
+
+
+async def send_media_group_items(bot, chat_id, items, extra_caption="", reply_markup=None):
+    """يُرسل قائمة عناصر وسائط كألبوم واحد (media group) دفعة واحدة."""
+    media = []
+    for idx, item in enumerate(items):
+        fid = item.get("file_id")
+        if not fid:
+            continue
+        cap = (item.get("content") or "") if idx == 0 else None
+        if idx == 0 and extra_caption:
+            cap = f"{cap}\n{extra_caption}".strip() if cap else extra_caption
+        t = item["type"]
+        if t == "photo":
+            media.append(InputMediaPhoto(fid, caption=cap or None))
+        elif t == "video":
+            media.append(InputMediaVideo(fid, caption=cap or None))
+        elif t == "file":
+            media.append(InputMediaDocument(fid, caption=cap or None))
+    if not media:
+        return []
+    try:
+        msgs = await bot.send_media_group(chat_id=chat_id, media=media)
+    except Exception as e:
+        logging.warning(f"[MG] send_media_group فشل: {e}")
+        return []
+    # media_group لا تدعم reply_markup — نُرسل الأزرار كرسالة منفصلة
+    if reply_markup and msgs:
+        try:
+            await bot.send_message(chat_id=chat_id, text="📎", reply_markup=reply_markup)
+        except Exception:
+            pass
+    return msgs or []
+
+
 async def clear_add_content_control(ctx, chat_id):
     msg_id = ctx.user_data.pop("add_content_control_msg_id", None)
     if msg_id:
@@ -270,9 +324,12 @@ async def deliver_denied_content(bot, chat_id, bid_str):
             return await self._b.send_audio(chat_id=self.chat_id, audio=a, **kw)
 
     target = _T(bot, chat_id)
-    for item in items:
+    for group in _group_items(items):
         try:
-            await send_file_item(target, item, extra_caption=extra, reply_markup=markup, bot=bot)
+            if len(group) > 1:
+                await send_media_group_items(bot, chat_id, group, extra_caption=extra, reply_markup=markup)
+            else:
+                await send_file_item(target, group[0], extra_caption=extra, reply_markup=markup, bot=bot)
         except Exception as e:
             logging.warning(f"deliver_denied_content: {e}")
 
@@ -343,10 +400,28 @@ async def send_items(m, bid, uid=None, bot=None):
     link_markup = build_caption_btn_markup(cap_btns)
     unified = (b.get("unified_rating", 0) or 0) if b else 0
     ratings_hidden = get_user_ratings_hidden(uid) if uid and not is_admin(uid) else False
-    for item in items:
-        sent = await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup, bot=bot)
-        if sent and uid and not is_admin(uid) and not unified and not ratings_hidden:
-            await send_item_rating_message(m, item, uid=uid)
+    # استخراج كائن الـ bot للإرسال الجماعي (media group)
+    _eff_bot = bot
+    if _eff_bot is None and hasattr(m, "get_bot"):
+        try:
+            _eff_bot = m.get_bot()
+        except Exception:
+            pass
+
+    for group in _group_items(items):
+        if len(group) > 1 and _eff_bot:
+            # إرسال الألبوم دفعة واحدة
+            sent_list = await send_media_group_items(
+                _eff_bot, m.chat_id, group,
+                extra_caption=extra_cap, reply_markup=link_markup
+            )
+            if sent_list and uid and not is_admin(uid) and not unified and not ratings_hidden:
+                await send_item_rating_message(m, group[0], uid=uid)
+        else:
+            item = group[0]
+            sent = await send_file_item(m, item, extra_caption=extra_cap, reply_markup=link_markup, bot=bot)
+            if sent and uid and not is_admin(uid) and not unified and not ratings_hidden:
+                await send_item_rating_message(m, item, uid=uid)
 
     # إرسال عبارة تحفيزية عشوائية بعد المحتوى (للمستخدمين فقط)
     if uid and not is_admin(uid):

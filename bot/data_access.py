@@ -22,6 +22,10 @@ def _next_id(col_name: str) -> int:
     )
     return result["seq"]
 
+def _next_group_id() -> int:
+    """يولّد معرّف مجموعة وسائط فريد لربط العناصر المُرسَلة دفعة واحدة."""
+    return _next_id("_media_groups")
+
 # ── تهيئة قاعدة البيانات (فهارس) ─────────────────────────────────
 def init_db():
     mdb = get_mongo_db()
@@ -719,19 +723,26 @@ def get_items_missing_channel():
     }).sort("id", 1)
     return [_d(r) for r in docs]
 
-def add_item(bid, t, content=None, file_id=None, local_path=None, channel_msg_id=None, _sync=True):
+def add_item(bid, t, content=None, file_id=None, local_path=None, channel_msg_id=None,
+             group_id=None, _twin_group_id=None, _sync=True):
     last = _col("content_items").find_one({"button_id": bid}, sort=[("ord", -1)])
     n = (last["ord"] if last else 0) + 1
     new_id = _next_id("content_items")
-    _col("content_items").insert_one({
+    doc = {
         "id": new_id, "button_id": bid, "type": t,
         "content": content, "file_id": file_id,
         "local_path": local_path, "channel_msg_id": channel_msg_id, "ord": n
-    })
+    }
+    if group_id is not None:
+        doc["group_id"] = group_id
+    _col("content_items").insert_one(doc)
     if _sync:
         twin_bid = get_twin(bid)
         if twin_bid is not None:
-            twin_item_id = add_item(twin_bid, t, content, file_id, local_path, channel_msg_id, _sync=False)
+            # إذا كان هناك group_id، نُولّد معرّف مجموعة منفصل للتوأم
+            tg_id = _twin_group_id if _twin_group_id is not None else (_next_group_id() if group_id is not None else None)
+            twin_item_id = add_item(twin_bid, t, content, file_id, local_path, channel_msg_id,
+                                    group_id=tg_id, _sync=False)
             set_item_twin(new_id, twin_item_id)
     return new_id
 
