@@ -81,7 +81,7 @@ def _build_entities(text: str, alias_map: dict, bold: bool = False) -> list:
         entities.append(MessageEntity(type="bold", offset=0, length=_utf16_len(text)))
 
     for fb_char, doc in alias_map.items():
-        if fb_char not in text:
+        if not fb_char or fb_char not in text:  # حارس ضد الحرف الفارغ (يسبب حلقة لا نهائية)
             continue
         pos = 0
         while True:
@@ -123,7 +123,9 @@ async def send_animated(
         alias_map = {
             a["alias"]: a
             for a in all_aliases
-            if a["alias"] == a.get("fallback", "") and a["alias"] in text
+            if a["alias"]                             # لا نأخذ الفارغ أبداً
+            and a["alias"] == a.get("fallback", "")
+            and a["alias"] in text
         }
         if not alias_map:
             return False   # لا إيموجي متحرك → PTB يكفي

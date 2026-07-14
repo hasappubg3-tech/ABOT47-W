@@ -347,11 +347,21 @@ async def on_message(update: Update, ctx):
         if _custom:
             _src = m.text or m.caption or ""
             _seen: set = set()
+            # تحويل النص إلى قائمة code points لمعالجة UTF-16 بشكل صحيح
+            _src_u16 = _src.encode("utf-16-le")
             for _e in _custom:
                 _eid = _e.custom_emoji_id
                 if _eid not in _seen:
                     _seen.add(_eid)
-                    _fb = _src[_e.offset:_e.offset + _e.length] if _src else "⭐"
+                    try:
+                        # الـ offset/length في Telegram هي بوحدات UTF-16
+                        _start = _e.offset * 2
+                        _end   = (_e.offset + _e.length) * 2
+                        _fb    = _src_u16[_start:_end].decode("utf-16-le") if _src else "⭐"
+                    except Exception:
+                        _fb = ""
+                    if not _fb:  # لا نحفظ فارغاً (يسبب حلقة لا نهائية لاحقاً)
+                        continue
                     try:
                         save_emoji_alias(_fb, _eid, _fb, uid)
                     except Exception:
