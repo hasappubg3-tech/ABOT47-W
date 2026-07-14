@@ -1388,6 +1388,59 @@ def get_next_emoji_num() -> int:
             pass
     return max(nums, default=0) + 1
 
+# ── وضع العمل (Work Mode) ────────────────────────────────────────
+def get_work_mode() -> bool:
+    """يُرجع True إذا كان وضع العمل مفعّلاً."""
+    return get_setting("work_mode", "0") == "1"
+
+def set_work_mode(active: bool):
+    set_setting("work_mode", "1" if active else "0")
+
+def create_work_snapshot():
+    """ينسخ buttons و content_items إلى مجموعات snapshot — يُجمّد ما يراه المستخدمون."""
+    db = mdb
+    db["buttons_snapshot"].drop()
+    db["content_items_snapshot"].drop()
+    btns = list(db["buttons"].find({}))
+    if btns:
+        db["buttons_snapshot"].insert_many(btns)
+    items = list(db["content_items"].find({}))
+    if items:
+        db["content_items_snapshot"].insert_many(items)
+
+def restore_work_snapshot():
+    """يستعيد الـ snapshot إلى المجموعات الحية ثم يحذفه."""
+    db = mdb
+    btns = list(db["buttons_snapshot"].find({}))
+    db["buttons"].delete_many({})
+    if btns:
+        db["buttons"].insert_many(btns)
+    items = list(db["content_items_snapshot"].find({}))
+    db["content_items"].delete_many({})
+    if items:
+        db["content_items"].insert_many(items)
+    drop_work_snapshot()
+
+def drop_work_snapshot():
+    """يحذف مجموعات الـ snapshot."""
+    mdb["buttons_snapshot"].drop()
+    mdb["content_items_snapshot"].drop()
+
+def get_buttons_user(pid=None):
+    """يجلب الأزرار للمستخدم العادي — من الـ snapshot إذا كان وضع العمل مفعّلاً."""
+    col = "buttons_snapshot" if get_work_mode() else "buttons"
+    if pid is None:
+        docs = _col(col).find({"parent_id": None, "deleted": {"$ne": 1}}).sort([("ord", 1), ("id", 1)])
+    else:
+        docs = _col(col).find({"parent_id": pid, "deleted": {"$ne": 1}}).sort([("ord", 1), ("id", 1)])
+    return [_d(r) for r in docs]
+
+def get_items_user(bid):
+    """يجلب محتوى الزر للمستخدم العادي — من الـ snapshot إذا كان وضع العمل مفعّلاً."""
+    col = "content_items_snapshot" if get_work_mode() else "content_items"
+    docs = _col(col).find({"button_id": bid}).sort([("ord", 1), ("id", 1)])
+    return [_d(r) for r in docs]
+
 # ── إحصائيات المستخدمين ──────────────────────────────────────────
 def update_user_info(uid, username=None, first_name=None):
     upd = {}

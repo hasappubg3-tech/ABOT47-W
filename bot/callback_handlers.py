@@ -1513,6 +1513,59 @@ async def cb_manage(update: Update, ctx):
                                   reply_markup=kb_settings())
         return
 
+    # ── وضع العمل ────────────────────────────────────────────────
+    if d == "st_work_mode":
+        work_on = get_work_mode()
+        if work_on:
+            status = "🟢 *وضع العمل مفعّل الآن*"
+            desc   = ("التغييرات التي تجريها *لا تظهر للمستخدمين* بعد.\n\n"
+                      "• اضغط *إنهاء العمل* لنشر كل التغييرات.\n"
+                      "• اضغط *إلغاء العمل* للتراجع وإعادة ما كان قبل العمل.")
+        else:
+            status = "⭕ *وضع العمل غير مفعّل*"
+            desc   = ("عند التفعيل، أي تعديل تجريه على الأزرار أو المحتوى\n"
+                      "*لن يظهر للمستخدمين* حتى تضغط إنهاء العمل.")
+        await q.edit_message_text(
+            f"🔧 *وضع العمل*\n\n{status}\n\n{desc}",
+            parse_mode="Markdown",
+            reply_markup=kb_work_mode()
+        )
+        return
+
+    if d == "st_work_start":
+        create_work_snapshot()
+        set_work_mode(True)
+        await q.edit_message_text(
+            "🟢 *تم تفعيل وضع العمل*\n\n"
+            "المستخدمون يرون النسخة المجمّدة الآن.\n"
+            "أجرِ تعديلاتك براحة، ثم اضغط *إنهاء العمل* عند الانتهاء.",
+            parse_mode="Markdown",
+            reply_markup=kb_work_mode()
+        )
+        return
+
+    if d == "st_work_end":
+        drop_work_snapshot()
+        set_work_mode(False)
+        await q.edit_message_text(
+            "✅ *تم إنهاء وضع العمل*\n\n"
+            "جميع التغييرات أصبحت مرئية للمستخدمين الآن.",
+            parse_mode="Markdown",
+            reply_markup=kb_work_mode()
+        )
+        return
+
+    if d == "st_work_cancel":
+        restore_work_snapshot()
+        set_work_mode(False)
+        await q.edit_message_text(
+            "❌ *تم إلغاء وضع العمل*\n\n"
+            "تم التراجع عن جميع التغييرات واستعادة النسخة السابقة.",
+            parse_mode="Markdown",
+            reply_markup=kb_work_mode()
+        )
+        return
+
     # ── رموز الإيموجي المتحركة ───────────────────────────────────
     if d == "st_emoji":
         aliases = get_all_emoji_aliases()

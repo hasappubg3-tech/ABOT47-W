@@ -373,7 +373,7 @@ async def deliver_denied_content(bot, chat_id, bid_str):
     if not bid_str or not str(bid_str).isdigit():
         return
     bid_int = int(bid_str)
-    items = get_items(bid_int)
+    items = get_items_user(bid_int)
     if not items:
         return
     b       = get_btn(bid_int)
@@ -460,7 +460,7 @@ async def send_items(m, bid, uid=None, bot=None):
                 await send_notif_gate(m, uid, bid)
                 return  # حجب المحتوى عند ظهور التنبيه المنبثق
 
-    items = get_items(bid)
+    items = get_items_user(bid) if (uid and not is_admin(uid)) else get_items(bid)
     if not items:
         await m.reply_text("📭 لا يوجد محتوى بعد.")
         return

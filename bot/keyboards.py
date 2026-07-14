@@ -117,11 +117,13 @@ def _quiz_status_label(label: str, bid: int, uid: int) -> str:
     return f"🟡{label}🟡"
 
 def build_kb(uid, pid=None):
-    btns = get_buttons(pid)
     real_admin = is_real_admin(uid)
     admin = is_admin(uid)  # False تلقائياً أثناء وضع (معاينة كمستخدم)
     if not admin:
+        btns = get_buttons_user(pid)
         btns = [b for b in btns if _btn_visible_for_user(b)]
+    else:
+        btns = get_buttons(pid)
     parent_b = get_btn(pid) if pid is not None else None
     if parent_b and parent_b.get("sort_alpha", 0) and btns:
         btns = _sort_alpha_children(btns)
@@ -821,7 +823,10 @@ def kb_settings():
     notif1_icon  = "✅" if (notif1_on and notif1_msg) else "⭕"
     lib_url = get_library_channel_url()
     lib_icon = "✅" if lib_url else "⭕"
+    work_on  = get_work_mode()
+    work_label = "🔧 وضع العمل: 🟢 مفعّل" if work_on else "🔧 وضع العمل: ⭕"
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton(work_label,                         callback_data="st_work_mode")],
         [InlineKeyboardButton("👥 المشرفون",                      callback_data="st_admins"),
          InlineKeyboardButton("💾 النسخ الاحتياطي",               callback_data="st_backup_menu")],
         [InlineKeyboardButton("✏️ رسالة البداية",                 callback_data="st_startmsg"),
@@ -837,6 +842,17 @@ def kb_settings():
         [InlineKeyboardButton(f"📚 المكتبة {lib_icon}",            callback_data="st_library"),
          InlineKeyboardButton("🎨 رموز الإيموجي",                 callback_data="st_emoji")],
     ])
+
+def kb_work_mode():
+    work_on = get_work_mode()
+    rows = []
+    if work_on:
+        rows.append([InlineKeyboardButton("✅ إنهاء العمل — نشر التغييرات للمستخدمين", callback_data="st_work_end")])
+        rows.append([InlineKeyboardButton("❌ إلغاء العمل — التراجع عن كل التغييرات",  callback_data="st_work_cancel")])
+    else:
+        rows.append([InlineKeyboardButton("🔧 بدء وضع العمل", callback_data="st_work_start")])
+    rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
+    return InlineKeyboardMarkup(rows)
 
 def kb_emoji_aliases():
     """لوحة إدارة رموز الإيموجي المتحركة."""
