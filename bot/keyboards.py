@@ -847,8 +847,8 @@ def kb_work_mode():
     work_on = get_work_mode()
     rows = []
     if work_on:
-        rows.append([InlineKeyboardButton("✅ إنهاء العمل — نشر التغييرات للمستخدمين", callback_data="st_work_end")])
-        rows.append([InlineKeyboardButton("❌ إلغاء العمل — التراجع عن كل التغييرات",  callback_data="st_work_cancel")])
+        rows.append([InlineKeyboardButton("⬆️ Push — نشر التغييرات للمستخدمين",       callback_data="st_work_end")])
+        rows.append([InlineKeyboardButton("❌ إلغاء — التراجع عن كل التغييرات",        callback_data="st_work_cancel")])
     else:
         rows.append([InlineKeyboardButton("🔧 بدء وضع العمل", callback_data="st_work_start")])
     rows.append([InlineKeyboardButton("رجوع", callback_data="st_back")])
