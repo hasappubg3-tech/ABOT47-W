@@ -143,13 +143,23 @@ def clear_mlz_filters_for_user(uid: int):
             del _mlz_filters[k]
 
 def _is_mlazm_subject(pid) -> bool:
-    """هل القائمة الحالية عبارة عن مادة داخل قائمة ملازم؟
-    الشرط: الوالد يحتوي كلمة 'ملازم' في اسمه."""
+    """هل القائمة الحالية (pid) عبارة عن مادة داخل قائمة ملازم؟
+    الشرط: والد هذه القائمة يحتوي كلمة 'ملازم' في اسمه (مع تجاهل حرف التطويل ـ)."""
     if pid is None:
         return False
     try:
-        parent = get_btn(pid)
-        return parent is not None and "ملازم" in parent.get("label", "")
+        current = get_btn(pid)          # الزر الحالي (مثلاً: كيمياء)
+        if current is None:
+            return False
+        parent_id = current.get("parent_id")
+        if parent_id is None:
+            return False
+        grandparent = get_btn(parent_id)  # الوالد (مثلاً: الـمـلازم)
+        if grandparent is None:
+            return False
+        # نحذف حرف التطويل (U+0640) قبل الفحص لأن "الـمـلازم" تحتويه
+        label_clean = grandparent.get("label", "").replace("\u0640", "")
+        return "ملازم" in label_clean
     except Exception:
         return False
 
