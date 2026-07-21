@@ -19,12 +19,30 @@ async def _error_handler(update, context):
     else:
         logging.error(f"خطأ غير متوقع: {err}", exc_info=err)
 
+def _start_flask():
+    """تشغيل سيرفر Flask في خيط منفصل (للاستضافة الخارجية فقط).
+    على Replit يعمل الموقع عبر workflow منفصل، لذا لا نفعّله هناك.
+    لتفعيله اضبط متغير البيئة: RUN_FLASK_IN_BOT=1
+    """
+    import threading, os as _os
+    if not _os.environ.get("RUN_FLASK_IN_BOT"):
+        return
+    from website.app import app as flask_app
+    port = int(_os.environ.get("PORT", 5000))
+    t = threading.Thread(
+        target=lambda: flask_app.run(host="0.0.0.0", port=port, use_reloader=False),
+        daemon=True,
+    )
+    t.start()
+    logging.info(f"✅ سيرفر الموقع يعمل على المنفذ {port}")
+
 def main():
     if not BOT_TOKEN:
         logging.error("TELEGRAM_BOT_TOKEN غير موجود!"); return
     if not MONGODB_URI:
         logging.error("MONGODB_URI غير موجود!"); return
     init_db()
+    _start_flask()
     from telegram.ext import JobQueue
     import httpx, asyncio
 
