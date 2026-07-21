@@ -20,14 +20,8 @@ async def _error_handler(update, context):
         logging.error(f"خطأ غير متوقع: {err}", exc_info=err)
 
 def _start_flask():
-    """تشغيل سيرفر Flask في خيط منفصل.
-    يُفعَّل تلقائياً عند وجود متغير PORT (Railway وغيرها)،
-    أو عند ضبط RUN_FLASK_IN_BOT=1 يدوياً.
-    على Replit يعمل الموقع عبر workflow منفصل فلا داعي لتفعيله.
-    """
+    """تشغيل سيرفر Flask دائماً في خيط منفصل."""
     import threading, os as _os
-    if not (_os.environ.get("PORT") or _os.environ.get("RUN_FLASK_IN_BOT")):
-        return
     from website.app import create_app
     flask_app = create_app()
     port = int(_os.environ.get("PORT", 5000))
