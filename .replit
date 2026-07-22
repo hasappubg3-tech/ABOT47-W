@@ -3,7 +3,7 @@ modules = ["python-3.11", "web", "nodejs-20"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cacert", "openssl", "postgresql"]
+packages = ["cacert", "freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "openssl", "postgresql", "swig", "xcbuild"]
 
 [unitTest]
 language = "python3"
