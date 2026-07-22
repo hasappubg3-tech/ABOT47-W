@@ -36,7 +36,10 @@ def strip_emoji(text) -> str:
     if not text:
         return ""
     return _EMOJI_RE.sub("", str(text)).strip()
-NEW_DAYS     = 14   # عدد الأيام لاعتبار الملزمة "جديدة"
+
+NEW_DAYS        = 14      # عدد الأيام لاعتبار الملزمة "جديدة"
+_PDF_THUMB_DIR  = "/tmp/pdf_thumbs"
+_PDF_THUMB_TTL  = 86400   # يوم كامل
 
 # ── Cache بسيط (file_id / bid -> (url|None, timestamp)) ──────────
 _file_url_cache: dict = {}
@@ -144,25 +147,125 @@ def _is_new(btn: dict) -> bool:
     return time.time() - created_at < NEW_DAYS * 86400
 
 
-def _thumb_url(bid: int) -> str | None:
-    """يجلب رابط الصورة الأولى لهذا الزر."""
+def _has_content_media(bid: int) -> bool:
+    """هل يوجد صورة أو PDF لهذا الزر؟"""
+    return bool(_col("content_items").find_one(
+        {"button_id": bid, "type": {"$in": ["photo", "document"]}}
+    ))
+
+
+def _pdf_thumbnail(bid: int) -> bytes | None:
+    """يولّد صورة JPEG من أول صفحة PDF ويخزّنها مؤقتاً."""
+    os.makedirs(_PDF_THUMB_DIR, exist_ok=True)
+    cache_path = f"{_PDF_THUMB_DIR}/{bid}.jpg"
+    # استخدم الكاش إذا كان حديثاً
+    try:
+        if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) < _PDF_THUMB_TTL:
+            with open(cache_path, "rb") as f:
+                return f.read()
+    except OSError:
+        pass
+    # ابحث عن ملف PDF
     item = _col("content_items").find_one(
-        {"button_id": bid, "type": "photo"},
+        {"button_id": bid, "type": "document"},
         sort=[("ord", 1), ("id", 1)]
     )
     if not item or not item.get("file_id"):
         return None
-    return _file_url(item["file_id"])
+    pdf_url = _file_url(item["file_id"])
+    if not pdf_url:
+        return None
+    try:
+        resp = _req.get(pdf_url, timeout=30)
+        if resp.status_code != 200:
+            return None
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=resp.content, filetype="pdf")
+        if doc.page_count == 0:
+            return None
+        page = doc[0]
+        mat = fitz.Matrix(1.5, 1.5)
+        pix = page.get_pixmap(matrix=mat)
+        img_bytes = pix.tobytes("jpeg")
+        with open(cache_path, "wb") as f:
+            f.write(img_bytes)
+        return img_bytes
+    except Exception as e:
+        logging.warning(f"[pdf_thumb bid={bid}] {e}")
+        return None
+
+
+def _grandparent_btn(btn: dict) -> dict | None:
+    """يُعيد زر الجد (مستويان للأعلى)."""
+    pid = btn.get("parent_id")
+    if pid is None:
+        return None
+    parent = _col("buttons").find_one({"id": pid})
+    if not parent:
+        return None
+    gpid = parent.get("parent_id")
+    if gpid is None:
+        return None
+    return _col("buttons").find_one({"id": gpid})
+
+
+def _teacher_from_items(bid: int) -> str:
+    """يستخرج اسم الأستاذ من النص الأول في محتوى الملزمة."""
+    item = _col("content_items").find_one(
+        {"button_id": bid, "type": "text"},
+        sort=[("ord", 1), ("id", 1)]
+    )
+    if not item:
+        return ""
+    content = item.get("content", "")
+    for line in content.split("\n"):
+        m = re.search(r'للاستاذ\s+(.+)', line)
+        if m:
+            name = strip_emoji(m.group(1)).replace("|", "").strip()
+            if name:
+                return name
+    return ""
+
+
+def _note_display_name(btn: dict) -> str:
+    """يبني اسم الملزمة بصيغة: النوع المادة للاستاذ الاسم السنة"""
+    bid       = btn["id"]
+    raw_label = strip_emoji(btn.get("label", ""))
+    words     = raw_label.split()
+
+    # النوع: أول كلمة من اسم الزر
+    note_type = words[0] if words else ""
+
+    # السنة: أول رقم رباعي في اسم الزر
+    year_m = re.search(r'\b(20\d{2})\b', raw_label)
+    year   = year_m.group(1) if year_m else ""
+
+    # الأستاذ: من وصف الملزمة
+    teacher = _teacher_from_items(bid)
+
+    # المادة: من زر الجد
+    gp      = _grandparent_btn(btn)
+    subject = strip_emoji(gp.get("label", "")) if gp else ""
+
+    parts = [p for p in [note_type, subject] if p]
+    if teacher:
+        parts.append(f"للاستاذ {teacher}")
+    if year:
+        parts.append(year)
+
+    result = " ".join(parts)
+    return result if result else raw_label
 
 
 def _enrich(btn: dict) -> dict:
     bid = btn["id"]
     return {
         **btn,
-        "rating":      _rating(bid),
-        "is_new":      _is_new(btn),
-        "thumb_url":   _thumb_url(bid),
-        "click_count": btn.get("click_count", 0),
+        "rating":        _rating(bid),
+        "is_new":        _is_new(btn),
+        "thumb_url":     _has_content_media(bid),
+        "click_count":   btn.get("click_count", 0),
+        "display_label": _note_display_name(btn),
     }
 
 
@@ -242,10 +345,11 @@ def create_app() -> Flask:
         btn = _btn(bid)
         if not btn or btn.get("type") != "content":
             abort(404)
-        items      = _items(bid)
-        rating     = _rating(bid)
-        breadcrumb = _breadcrumb(bid)
-        thumb      = _thumb_url(bid)
+        items         = _items(bid)
+        rating        = _rating(bid)
+        breadcrumb    = _breadcrumb(bid)
+        thumb         = _has_content_media(bid)
+        display_label = _note_display_name(btn)
 
         # نص المقدمة: أول عنصر نصي
         preview_text = next(
@@ -271,17 +375,18 @@ def create_app() -> Flask:
             rating=rating,
             breadcrumb=breadcrumb,
             thumb=thumb,
+            display_label=display_label,
             preview_text=preview_text,
             photos=photos,
             pdf_url=pdf_url,
             bot_deep_link=bot_deep_link,
             bot_username=BOT_USERNAME,
             site_name=SITE_NAME,
-            title=f"{strip_emoji(btn.get('label',''))} | {SITE_NAME}",
-            og_title=f"{strip_emoji(btn.get('label',''))} — {SITE_NAME}",
-            og_description=preview_text[:160] if preview_text else f"ملزمة {strip_emoji(btn.get('label',''))}",
+            title=f"{display_label} | {SITE_NAME}",
+            og_title=f"{display_label} — {SITE_NAME}",
+            og_description=preview_text[:160] if preview_text else f"ملزمة {display_label}",
             og_url=f"/note/{bid}",
-            og_image=thumb or "",
+            og_image="",
         )
 
     # ── صفحة البحث ───────────────────────────────────────────────────
@@ -318,12 +423,13 @@ def create_app() -> Flask:
             for d in docs
         ])
 
-    # ── Thumbnail بـ bid (للتوافق مع الكود القديم) ────────────────────
+    # ── Thumbnail: أول صفحة من PDF ────────────────────────────────────
     @app.route("/thumb/<int:bid>")
     def thumb(bid: int):
-        url = _thumb_url(bid)
-        if url:
-            return redirect(url)
+        data = _pdf_thumbnail(bid)
+        if data:
+            return Response(data, mimetype="image/jpeg",
+                            headers={"Cache-Control": "max-age=3600"})
         return redirect(url_for("static", filename="img/no-thumb.svg"))
 
     # ── File proxy بـ file_id (للغاليري والـ PDF) ────────────────────

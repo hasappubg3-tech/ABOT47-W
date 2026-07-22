@@ -48,10 +48,10 @@
       <!-- Thumbnail -->
       <div class="note-thumb">
         {% if note.thumb_url %}
-          <img src="/thumb/{{ note.id }}" alt="{{ note.label | strip_emoji }}" loading="lazy">
+          <img src="/thumb/{{ note.id }}" alt="{{ note.display_label }}" loading="lazy">
         {% else %}
           <div class="note-thumb-placeholder">
-            <span>{{ (note.label | strip_emoji or '📄')[0] }}</span>
+            <span>{{ (note.display_label or '📄')[0] }}</span>
           </div>
         {% endif %}
       </div>
@@ -59,7 +59,7 @@
       <!-- معلومات -->
       <div class="note-info">
         <div class="note-top">
-          <h3 class="note-title">{{ note.label | strip_emoji }}</h3>
+          <h3 class="note-title">{{ note.display_label }}</h3>
           {% if note.is_new %}
           <span class="badge badge--new">جديد</span>
           {% endif %}
@@ -88,7 +88,7 @@
 
         <div class="note-actions">
           <span class="open-btn">عرض الملزمة</span>
-          <button class="share-btn-sm" onclick="shareNote(event, '{{ note.id }}', '{{ note.label | strip_emoji | replace("'", "\\'") }}')" title="مشاركة">
+          <button class="share-btn-sm" onclick="shareNote(event, '{{ note.id }}', '{{ note.display_label | replace("'", "\\'") }}')" title="مشاركة">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
               <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>

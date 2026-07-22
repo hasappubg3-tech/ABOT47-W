@@ -38,16 +38,16 @@
       <a href="/note/{{ note.id }}" class="note-card">
         <div class="note-thumb">
           {% if note.thumb_url %}
-            <img src="/thumb/{{ note.id }}" alt="{{ note.label | strip_emoji }}" loading="lazy">
+            <img src="/thumb/{{ note.id }}" alt="{{ note.display_label }}" loading="lazy">
           {% else %}
             <div class="note-thumb-placeholder">
-              <span>{{ (note.label | strip_emoji or '📄')[0] }}</span>
+              <span>{{ (note.display_label or '📄')[0] }}</span>
             </div>
           {% endif %}
         </div>
         <div class="note-info">
           <div class="note-top">
-            <h3 class="note-title">{{ note.label | strip_emoji }}</h3>
+            <h3 class="note-title">{{ note.display_label }}</h3>
             {% if note.is_new %}<span class="badge badge--new">جديد</span>{% endif %}
           </div>
           <div class="note-meta">
